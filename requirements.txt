@@ -1,0 +1,6 @@
+flask==3.0.3
+sqlalchemy==2.0.36
+psycopg[binary]==3.2.3
+python-dotenv==1.0.1
+gunicorn==23.0.0
+openpyxl==3.1.5

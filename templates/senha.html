@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>Criar senha · BI Jurídico</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@500;600;700&display=swap">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/tema.css') }}">
+  <script>try { const t = localStorage.getItem('bj-theme'); if (t) document.documentElement.dataset.theme = t } catch (e) {}</script>
+  <style>
+    /* Tela de entrada: um cartão central, sem distrações, no mesmo visual do sistema */
+    .lg{min-height:100vh;display:grid;place-items:center;padding:24px 16px;position:relative;overflow:hidden}
+    .lg::before{display:none}.x0{content:"";position:absolute;inset:-40% -20% auto auto;width:720px;height:720px;border-radius:50%;
+      background:radial-gradient(closest-side,color-mix(in srgb,var(--accent) 16%,transparent),transparent);pointer-events:none}
+    .lg::after{display:none}.x1{content:"";position:absolute;inset:auto auto -45% -25%;width:640px;height:640px;border-radius:50%;
+      background:radial-gradient(closest-side,color-mix(in srgb,var(--pos) 10%,transparent),transparent);pointer-events:none}
+    .lg-card{position:relative;z-index:1;width:100%;max-width:400px;background:var(--surface);border:1px solid var(--line);
+      border-radius:10px;box-shadow:none;border-top:4px solid var(--primary);padding:36px 32px 28px;display:flex;flex-direction:column;gap:22px}
+    .lg-brand{display:flex;align-items:center;gap:12px}
+    .lg-mark{width:44px;height:44px;border-radius:6px;font-family:var(--fc);font-size:19px;background:var(--primary);color:var(--primary-ink);display:grid;place-items:center;font-weight:700;font-size:15px;letter-spacing:-.02em}
+    .lg-brand b{display:block;font-size:16px;font-weight:600;letter-spacing:-.01em}
+    .lg-brand small{color:var(--muted);font-size:12.5px}
+    .lg h1{margin:0;font-family:var(--fc);font-size:30px;font-weight:600}
+    .lg p.sub{margin:4px 0 0;color:var(--muted);font-size:13.5px}
+    .lg form{display:flex;flex-direction:column;gap:14px}
+    .lg .fld input{padding:12px 14px;font-size:14px}
+    .pw{position:relative}
+    .pw input{padding-right:46px}
+    .pw button{position:absolute;right:6px;top:50%;transform:translateY(-50%);border:0;background:none;color:var(--muted);width:36px;height:36px;border-radius:10px;display:grid;place-items:center}
+    .pw button:hover{color:var(--ink);background:var(--surface-2)}
+    .pw svg{width:18px;height:18px}
+    .lg .btn.primary{justify-content:center;padding:13px;font-size:14px;margin-top:4px}
+    .lg-err{background:var(--neg-soft);color:var(--neg);border-radius:12px;padding:11px 14px;font-size:13px}
+    .lg-rules{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px;font-size:12.5px;color:var(--muted)}
+    .lg-rules li{display:flex;gap:8px;align-items:center}
+    .lg-rules li::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--line)}
+    .lg-rules li.ok{color:var(--pos)}
+    .lg-rules li.ok::before{background:var(--pos)}
+    .lg-foot a{color:var(--muted)}
+    .lg-foot{text-align:center;color:var(--muted);font-size:12px}
+  </style>
+</head>
+<body>
+<main class="lg">
+  <section class="lg-card" aria-labelledby="lg-t">
+    <div class="lg-brand">
+      <div class="lg-mark">BJ</div>
+      <div><b>BI Jurídico</b><small>Densul · Jurídico e Financeiro</small></div>
+    </div>
+    <div>
+      <h1 id="lg-t">{% if primeiro %}Crie a sua senha{% else %}Trocar senha{% endif %}</h1>
+      <p class="sub">{% if primeiro %}Olá, {{ nome }}. Este é o seu primeiro acesso: escolha uma senha só sua para continuar.{% else %}Confirme a senha atual e escolha a nova.{% endif %}</p>
+    </div>
+    {% if erro %}<div class="lg-err" role="alert">{{ erro }}</div>{% endif %}
+    <form method="post" autocomplete="off">
+      <input type="text" name="username" value="{{ session.get('usuario', '') }}" autocomplete="username" hidden>
+{% if not primeiro %}      <div class="fld"><label for="atual">Senha atual</label>
+        <div class="pw"><input id="atual" name="atual" type="password" required autocomplete="current-password" autofocus>
+          <button type="button" class="ver" data-for="atual" aria-label="Mostrar senha" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button>
+        </div>
+      </div>
+{% endif %}
+      <div class="fld"><label for="nova">Nova senha</label>
+        <div class="pw"><input id="nova" name="nova" type="password" required autocomplete="new-password"{% if primeiro %} autofocus{% endif %}>
+          <button type="button" class="ver" data-for="nova" aria-label="Mostrar senha" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button>
+        </div>
+      </div>
+      <div class="fld"><label for="confirma">Repita a nova senha</label>
+        <div class="pw"><input id="confirma" name="confirma" type="password" required autocomplete="new-password">
+          <button type="button" class="ver" data-for="confirma" aria-label="Mostrar senha" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button>
+        </div>
+      </div>
+      <ul class="lg-rules">
+        <li id="r-tam">Pelo menos {{ minimo }} caracteres</li>
+        <li id="r-ig">As duas senhas iguais</li>
+      </ul>
+      <button class="btn primary" type="submit">Salvar senha e entrar</button>
+    </form>
+    <div class="lg-foot">{% if primeiro %}<a href="/sair">Sair</a>{% else %}<a href="/">Voltar ao sistema</a>{% endif %}</div>
+  </section>
+</main>
+<script>
+  document.querySelectorAll('.ver').forEach(b => b.addEventListener('click', () => {
+    const s = document.getElementById(b.dataset.for), v = s.type === 'password'
+    s.type = v ? 'text' : 'password'; b.setAttribute('aria-pressed', v); b.setAttribute('aria-label', v ? 'Esconder senha' : 'Mostrar senha'); s.focus()
+  }))
+  const n = document.getElementById('nova'), c = document.getElementById('confirma')
+  const chk = () => {
+    document.getElementById('r-tam').classList.toggle('ok', n.value.length >= {{ minimo }})
+    document.getElementById('r-ig').classList.toggle('ok', !!n.value && n.value === c.value)
+  }
+  n.addEventListener('input', chk); c.addEventListener('input', chk)
+</script>
+</body>
+</html>
