@@ -35,6 +35,7 @@ Tudo o que é alterado fica no **histórico** (quem, quando, de quanto para quan
 - O usuário `admin` é criado sozinho na primeira subida. Entra com a `SENHA_PADRAO` e o sistema obriga a criar uma senha própria.
 - Novos usuários: Administração > Usuários > Novo usuário. Cada um entra a primeira vez com a `SENHA_PADRAO`.
 - Esqueceu a senha: o administrador abre o usuário e clica em "Voltar senha para a padrão".
+- Se o próprio administrador esquecer: no Railway, crie a variável `RESETAR_SENHA=admin`. Ao reiniciar, a senha volta para a padrão (uma única vez). Para outro reset no futuro, mude o valor (ex.: `admin#2`).
 
 ## Custas e avisos
 

@@ -53,6 +53,30 @@ criar_tabelas()
 garantir_admin(os.environ.get("ADMIN_USUARIO", "admin").strip().lower(), os.environ.get("ADMIN_NOME", "Administrador"))
 
 
+def _reset_pelo_railway():
+    """Senha esquecida do administrador: no Railway, crie RESETAR_SENHA=<usuário> (ex.: admin).
+    Ao reiniciar, a senha desse usuário volta para a SENHA_PADRAO uma única vez, mesmo que a variável continue lá.
+    Para resetar de novo no futuro, mude o valor (ex.: admin#2)."""
+    pedido = os.environ.get("RESETAR_SENHA", "").strip()
+    if not pedido:
+        return
+    marca = os.path.join(PASTA_DADOS, "resets_feitos.txt")
+    feitos = open(marca).read().split("\n") if os.path.exists(marca) else []
+    if pedido in feitos:
+        return
+    with engine.begin() as c:
+        for nome in [p.split("#")[0].strip().lower() for p in pedido.split(",")]:
+            r = c.execute(select(usuarios).where(usuarios.c.usuario == nome)).first()
+            if r:
+                c.execute(update(usuarios).where(usuarios.c.id == r.id).values(hash=None, v=(r.v or 0) + 1))
+                registrar(c, None, "Senha voltou para a padrão (pelo Railway)", detalhes={"usuario": nome})
+    with open(marca, "a") as f:
+        f.write(pedido + "\n")
+
+
+_reset_pelo_railway()
+
+
 # ---------- usuário logado ----------
 
 def _usuario(uid):
