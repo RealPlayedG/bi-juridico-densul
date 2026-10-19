@@ -1,40 +1,40 @@
 /* ==========================================================================
    BI Jurídico Densul: identidade visual própria
    Barlow (fonte da Densul) no texto, Barlow Condensed em números e títulos.
-   Verde de capa de processo como cor principal, âmbar para prazo, vermelho para vencido.
+   Azul Densul como cor principal, âmbar para prazo, vermelho para vencido.
    Superfícies planas: borda fina, sem sombra. Barra superior com abas.
    ========================================================================== */
 :root{
   --bg:#e9edf0; --surface:#ffffff; --surface-2:#f2f4f6; --surface-3:#e3e8ec;
   --ink:#1b2126; --muted:#5f6b75; --line:#d7dde2;
-  --primary:#1f5f4a; --primary-ink:#ffffff; --primary-soft:#e2efe9;
-  --accent:#1f5f4a; --accent-soft:#e2efe9;
+  --primary:#12509a; --primary-ink:#ffffff; --primary-soft:#e4edf8;
+  --accent:#12509a; --accent-soft:#e4edf8;
   --pos:#1d7a4f; --pos-soft:#e0f1e8; --neg:#b42318; --neg-soft:#fbe9e7; --warn:#a8650b; --warn-soft:#fbf0dc;
   --nt:#5b4fa8; --nt-soft:#ecebf8;
-  --c1:#1f5f4a; --c2:#a8650b; --c3:#3b6ea8; --c4:#7a4f9a; --c5:#b04a6a; --c6:#4f8a3a; --c7:#2f8a8a; --c8:#8a949c;
+  --c1:#12509a; --c2:#a8650b; --c3:#1d8a6a; --c4:#7a4f9a; --c5:#b04a6a; --c6:#4f8a3a; --c7:#2f8a8a; --c8:#8a949c;
   --shadow:none; --shadow-lg:0 18px 50px rgba(20,30,35,.18);
   --r:8px; --r-sm:6px;
   --f:'Barlow',system-ui,-apple-system,'Segoe UI',sans-serif;
   --fc:'Barlow Condensed','Barlow',system-ui,sans-serif;
 }
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
-  --bg:#101513; --surface:#171d1b; --surface-2:#1d2522; --surface-3:#25302c;
-  --ink:#e6ece9; --muted:#93a19b; --line:#2a3531;
-  --primary:#5fb393; --primary-ink:#0e1513; --primary-soft:#1b2f28;
-  --accent:#5fb393; --accent-soft:#1b2f28;
+  --bg:#0e131a; --surface:#151b24; --surface-2:#1b232e; --surface-3:#232d3a;
+  --ink:#e6ebf2; --muted:#93a0b0; --line:#28323f;
+  --primary:#6ea2e8; --primary-ink:#0c1420; --primary-soft:#172a44;
+  --accent:#6ea2e8; --accent-soft:#172a44;
   --pos:#5cc48f; --pos-soft:#14301f; --neg:#f07468; --neg-soft:#3a1a17; --warn:#e3a64a; --warn-soft:#352812;
   --nt:#a79cf0; --nt-soft:#25223d;
-  --c1:#5fb393; --c2:#e3a64a; --c3:#6f9fd8; --c4:#ad85cf; --c5:#e07d9c; --c6:#86c06d; --c7:#5fc0c0; --c8:#6f7b82;
+  --c1:#6ea2e8; --c2:#e3a64a; --c3:#4fbf95; --c4:#ad85cf; --c5:#e07d9c; --c6:#86c06d; --c7:#5fc0c0; --c8:#6f7b82;
   --shadow-lg:0 18px 50px rgba(0,0,0,.5); color-scheme:dark;
 }}
 :root[data-theme="dark"]{
-  --bg:#101513; --surface:#171d1b; --surface-2:#1d2522; --surface-3:#25302c;
-  --ink:#e6ece9; --muted:#93a19b; --line:#2a3531;
-  --primary:#5fb393; --primary-ink:#0e1513; --primary-soft:#1b2f28;
-  --accent:#5fb393; --accent-soft:#1b2f28;
+  --bg:#0e131a; --surface:#151b24; --surface-2:#1b232e; --surface-3:#232d3a;
+  --ink:#e6ebf2; --muted:#93a0b0; --line:#28323f;
+  --primary:#6ea2e8; --primary-ink:#0c1420; --primary-soft:#172a44;
+  --accent:#6ea2e8; --accent-soft:#172a44;
   --pos:#5cc48f; --pos-soft:#14301f; --neg:#f07468; --neg-soft:#3a1a17; --warn:#e3a64a; --warn-soft:#352812;
   --nt:#a79cf0; --nt-soft:#25223d;
-  --c1:#5fb393; --c2:#e3a64a; --c3:#6f9fd8; --c4:#ad85cf; --c5:#e07d9c; --c6:#86c06d; --c7:#5fc0c0; --c8:#6f7b82;
+  --c1:#6ea2e8; --c2:#e3a64a; --c3:#4fbf95; --c4:#ad85cf; --c5:#e07d9c; --c6:#86c06d; --c7:#5fc0c0; --c8:#6f7b82;
   --shadow-lg:0 18px 50px rgba(0,0,0,.5); color-scheme:dark;
 }
 body{font-size:15px;letter-spacing:.005em}
@@ -103,7 +103,7 @@ body{font-size:15px;letter-spacing:.005em}
 .fld label{font-size:13px;color:var(--muted)}
 .modal{border-radius:10px}
 .drawer .modal{border-radius:10px 0 0 10px}
-.overlay{background:rgba(16,24,22,.45);backdrop-filter:none}
+.overlay{background:rgba(12,20,32,.45);backdrop-filter:none}
 .overlay.drawer{padding:0}
 .m-h h2{font-family:var(--fc);font-size:24px;font-weight:600;letter-spacing:0}
 .m-h .x{border-radius:6px}
@@ -193,3 +193,4 @@ td.r{font-size:16px}
   .drawer .modal{border-radius:0}
 }
 @media (max-width:600px){.kpi{padding:14px 16px}.kpi-v{font-size:28px}.sync{display:none}}
+a.btn{text-decoration:none;color:var(--ink)} a.btn.primary{color:var(--primary-ink)}

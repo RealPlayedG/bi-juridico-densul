@@ -7,4 +7,4 @@
 - Toda alteração de dado passa por `registrar()` (histórico de quem mudou o quê).
 - Permissões são checadas no servidor (app.py), não só na tela.
 - Textos sem travessão (em-dash). Português do Brasil, simples e direto.
-- Visual: tema.css (Barlow / Barlow Condensed, verde #1f5f4a). app.css é a base de layout.
+- Visual: tema.css (Barlow / Barlow Condensed, azul #12509a). app.css é a base de layout.
