@@ -122,7 +122,8 @@ function painel(){
   const cv=custasVis(),abertas=cv.filter(c=>!c.pago),venc=abertas.filter(c=>c.vencimento&&c.vencimento<HOJE);
   const at=atencao();
   let h=`<div class="ph"><div><h1>${S.loja?esc(S.loja):'Visão geral'}</h1><p>${cob.length} cobranças e ${div.length} processos diversos</p></div><div class="ph-actions">${canJ?`<button class="btn primary" data-act="novo">${icon('plus')}Novo processo</button>`:''}</div></div>`;
-  if(at.length)h+=`<section class="card alerta"><div class="card-h"><h2>${icon('alert-triangle')}Custas para pagar</h2><span class="sub">${at.length} ${at.length===1?'custa vencida ou vencendo':'custas vencidas ou vencendo'} nos próximos 3 dias</span>${at.length>5?'<button class="link" data-page="custas">Ver todas</button>':''}</div><div class="card-b"><div class="ulist">${at.slice(0,5).map(c=>cRow(c)).join('')}</div></div></section>`;
+  if(at.length){const nv=at.filter(c=>['vencida','hoje'].includes(custaSt(c))).length,nl=at.length-nv;
+    h+=`<button class="strip ${nv?'neg':'warn'}" data-page="custas" data-cfgo="atencao">${icon(nv?'alert-triangle':'calendar-clock')}<span><b>${nv?`${nv} ${nv===1?'custa vencida':'custas vencidas'}`:''}${nv&&nl?' e ':''}${nl?`${nl} vencendo nos próximos 3 dias`:''}</b><small>Mais antiga: ${esc(parteNome(proc(at[0].processo_id)))}, ${brDate(at[0].vencimento)}</small></span><em>Ver custas${icon('chevron-right')}</em></button>`}
   h+=`<div class="kpis kpis5">
     ${kpi('hand-coins','Em cobrança',fmt0(soma(cobAt,'valor')),`${cobAt.length} clientes no jurídico`,'',true)}
     ${kpi('gavel','Processo aberto',fmt0(soma(cob.filter(p=>p.status==='Processo Aberto'),'valor')),`${cob.filter(p=>p.status==='Processo Aberto').length} processos`)}
@@ -130,12 +131,17 @@ function painel(){
     ${kpi('wallet','Recebido',fmt0(tPago),tAc>tPago?`falta receber ${fmt0(tAc-tPago)}`:'','pos')}
     ${kpi('receipt','Custas a pagar',String(abertas.length),venc.length?`${venc.length} vencida${venc.length>1?'s':''}`:`${fmt0(soma(abertas,'valor'))} lançado`,venc.length?'neg':'warn')}
   </div>`;
-  h+=`<div class="g2">
-    <section class="card"><div class="card-h"><h2>Cobrança por status</h2><span class="sub">valor da dívida</span></div><div class="card-b"><div class="chart-box" style="height:280px"><canvas id="cSt" role="img" aria-label="Valor em cobrança por status"></canvas></div></div></section>
+  const st=porStatus(),totSt=st.reduce((x,r)=>x+r[1],0)||1,maxSt=Math.max(...st.map(r=>r[1]),1);
+  const nSt=k=>cob.filter(p=>(p.status||'Sem status')===k).length;
+  const lj=porLoja(),top=lj.slice(0,8),resto=lj.slice(8),maxLj=Math.max(...top.map(r=>r[1]),1);
+  const nLj=k=>cob.filter(p=>(p.loja||'Sem loja')===k).length;
+  const barra=(rot,v,max,sub,attrs)=>`<button class="hb" ${attrs} title="${esc(rot)}: ${fmt(v)}${sub?' ('+sub+')':''}"><span class="hb-l">${esc(rot)}</span><span class="hb-t"><i style="width:${Math.max(v/max*100,v?1.5:0)}%"></i></span><span class="hb-v num">${fmt0(v)}<small>${sub}</small></span></button>`;
+  h+=`<div class="g2 g2-eq">
+    <section class="card"><div class="card-h"><h2>Cobrança por status</h2><span class="sub">valor da dívida</span></div><div class="card-b hb-list">${st.map(([k,v])=>barra(k,v,maxSt,`${nSt(k)} · ${Math.round(v/totSt*100)}%`,`data-gost="${esc(k)}"`)).join('')}</div></section>
+    <section class="card"><div class="card-h"><h2>Cobrança por loja</h2><span class="sub">${lj.length} lojas, maiores valores</span></div><div class="card-b hb-list">${top.map(([k,v])=>barra(k,v,maxLj,`${nLj(k)} ${nLj(k)===1?'cliente':'clientes'}`,`data-golj="${esc(k)}"`)).join('')}${resto.length?`<p class="hint" style="margin:6px 0 0">Outras ${resto.length} lojas somam ${fmt0(resto.reduce((x,r)=>x+r[1],0))}.</p>`:''}</div></section>
+  </div>
+  <div class="g2 g2-eq">
     <section class="card"><div class="card-h"><h2>Próximas custas</h2><button class="link" data-page="custas">Calendário</button></div><div class="card-b">${proxCustas()}</div></section>
-  </div>`;
-  h+=`<div class="g2">
-    <section class="card"><div class="card-h"><h2>Cobrança por loja</h2><span class="sub">valor da dívida, maiores primeiro</span></div><div class="card-b"><div class="chart-box" style="height:${Math.max(220,Math.min(14,porLoja().length)*28+40)}px"><canvas id="cLj" role="img" aria-label="Valor em cobrança por loja"></canvas></div></div></section>
     <section class="card"><div class="card-h"><h2>Processos diversos</h2><button class="link" data-page="diversos">Ver todos</button></div><div class="card-b">${resumoDiv(div)}</div></section>
   </div>`;
   return h;
@@ -151,7 +157,7 @@ function resumoDiv(div){
   const m={};div.forEach(p=>{const k=p.tipo_acao||'Sem tipo';m[k]=(m[k]||0)+1});
   const rows=Object.entries(m).sort((a,b)=>b[1]-a[1]),max=rows[0][1];
   const cond=soma(div,'valor');
-  return `<p class="insight"><b>${div.length} processos</b>${cond?`<span>${fmt0(cond)} em condenações registradas</span>`:''}</p><ul class="lgd">${rows.slice(0,8).map(([k,v],i)=>`<li><i style="background:var(--c${Math.min(i+1,8)})"></i><span>${esc(k)}</span><b class="num">${v}</b><small></small><span class="lgd-bar"><em style="width:${v/max*100}%;background:var(--c${Math.min(i+1,8)})"></em></span></li>`).join('')}</ul>`;
+  return `<p class="insight"><b>${div.length} processos</b>${cond?`<span>${fmt0(cond)} em condenações registradas</span>`:''}</p><div class="hb-list">${rows.slice(0,7).map(([k,v])=>`<button class="hb hb-n" data-godiv="${esc(k)}" title="${esc(k)}: ${v}"><span class="hb-l">${esc(k)}</span><span class="hb-t"><i style="width:${v/max*100}%"></i></span><span class="hb-v num">${v}</span></button>`).join('')}</div>`;
 }
 function cRow(c,compacto){
   const p=proc(c.processo_id),d=c.vencimento?dParts(c.vencimento):null;
@@ -167,7 +173,7 @@ function baseOpts(){const ink=cssv('--ink'),surf=cssv('--surface'),line=cssv('--
 function mountCharts(){
   CH.forEach(c=>c.destroy());CH=[];
   if(S.page!=='painel'||!window.Chart)return;
-  Chart.defaults.font.family="'Barlow',system-ui,sans-serif";Chart.defaults.font.size=12.5;Chart.defaults.font.size=11.5;Chart.defaults.color=cssv('--muted');
+  Chart.defaults.font.family="'Poppins',system-ui,sans-serif";Chart.defaults.font.size=11.5;Chart.defaults.font.size=11.5;Chart.defaults.color=cssv('--muted');
   const corSt=s=>{const c=stCls(s);return cssv(c==='s-aberto'?'--accent':c==='s-peticao'?'--warn':c==='s-docs'?'--nt':c==='s-acordo'||c==='s-fim'?'--pos':c==='s-neg'?'--neg':'--c8')};
   const st=porStatus(),a=$('#cSt');
   if(a&&st.length)CH.push(new Chart(a,{type:'bar',data:{labels:st.map(x=>x[0]),datasets:[{data:st.map(x=>x[1]),backgroundColor:st.map(x=>corSt(x[0])),borderRadius:8,borderSkipped:false,maxBarThickness:26}]},options:baseOpts()}));
@@ -413,7 +419,7 @@ document.addEventListener('click',async e=>{
   if(e.target.matches('.overlay')){closeLayer();return}
   if(!t)return;const d=t.dataset;
   if(d.close){closeLayer();return}
-  if(d.page){e.preventDefault();S.page=d.page;S.st='todos';S.q='';closeLayer();render();window.scrollTo(0,0);return}
+  if(d.page){e.preventDefault();if(d.cfgo){S.cf=d.cfgo;S.cv='lista'}S.page=d.page;S.st='todos';S.q='';closeLayer();render();window.scrollTo(0,0);return}
   if(d.refresh){refresh();return}
   if(d.bell){S.bell=!S.bell;renderBell();drawIcons();return}
   if(d.readall){atencao().forEach(c=>READ.add(`c${c.id}-${c.vencimento}`));saveRead();renderBell();drawIcons();return}
@@ -424,6 +430,9 @@ document.addEventListener('click',async e=>{
   if(d.mnav){S.cm+=+d.mnav;if(S.cm<0){S.cm=11;S.cy--}if(S.cm>11){S.cm=0;S.cy++}render();return}
   if(d.today){S.cy=_t.getFullYear();S.cm=_t.getMonth();S.sel=HOJE;render();return}
   if(d.day){S.sel=d.day;render();return}
+  if(d.gost!==undefined){S.page='cobranca';S.st=d.gost;S.q='';render();window.scrollTo(0,0);return}
+  if(d.golj!==undefined){S.page='cobranca';S.st='todos';S.loja=d.golj==='Sem loja'?'':d.golj;S.q='';salvaEstado();render();window.scrollTo(0,0);return}
+  if(d.godiv!==undefined){S.page='diversos';S.st='todos';S.q=d.godiv==='Sem tipo'?'':d.godiv;render();window.scrollTo(0,0);return}
   if(d.csv){exportarCSV(d.csv);return}
   if(d.act==='novo'){openNovo(d.tipo);return}
   if(d.novotipo){openNovo(d.novotipo);return}

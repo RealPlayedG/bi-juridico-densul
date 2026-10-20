@@ -6,27 +6,28 @@
   <title>BI Jurídico</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@500;600;700&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v={{ versao }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/tema.css') }}?v={{ versao }}">
   <script>try { const t = localStorage.getItem('bj-theme'); if (t) document.documentElement.dataset.theme = t } catch (e) {}</script>
 </head>
 <body>
 <div class="app">
-  <header class="top-bar">
-    <div class="top-in">
-      <div class="brand"><div class="mark">BJ</div><div><b>BI Jurídico</b><small>Densul</small></div></div>
-      <nav class="nav" id="nav" aria-label="Seções"></nav>
+  <aside class="side">
+    <div class="brand"><div class="mark">BJ</div><div><b>BI Jurídico</b><small>Densul</small></div></div>
+    <nav class="nav" id="nav" aria-label="Seções"></nav>
+  </aside>
+  <div class="main">
+    <header class="top">
+      <div class="m-brand"><div class="mark">BJ</div>BI Jurídico</div>
+      <label class="loja-sel" id="lojaSel"></label>
       <div class="top-right">
         <span id="sync"></span>
+        <div class="seg" id="profile"></div>
         <div class="bell-wrap" id="bell"></div>
         <button class="iconbtn" id="themeBtn" aria-label="Alternar tema claro e escuro"></button>
-        <div class="seg" id="profile"></div>
       </div>
-    </div>
-  </header>
-  <div class="main">
-    <div class="subbar" style="padding-top:18px"><label class="loja-sel" id="lojaSel"></label></div>
+    </header>
     <main class="page" id="page"></main>
   </div>
 </div>
