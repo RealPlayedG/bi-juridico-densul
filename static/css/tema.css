@@ -226,8 +226,10 @@ a.btn{text-decoration:none;color:var(--ink)} a.btn.primary{color:var(--primary-i
 
 /* ---------- Logo Densul (só no login) ---------- */
 .logo-box{display:inline-block;line-height:0}
-@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .logo-box{background:#fff;border-radius:6px;padding:6px 8px}}
-:root[data-theme="dark"] .logo-box{background:#fff;border-radius:6px;padding:6px 8px}
+.logo-box img{display:block}
+.logo-escuro{display:none!important}
+:root[data-theme="dark"] .logo-claro{display:none!important}
+:root[data-theme="dark"] .logo-escuro{display:block!important}
 .kpi-v{font-size:clamp(20px,1.85vw,27px);white-space:nowrap}
 /* Linha de custa em espaço estreito (painel do calendário, celular): empilha em vez de espremer */
 .card-b{container-type:inline-size}

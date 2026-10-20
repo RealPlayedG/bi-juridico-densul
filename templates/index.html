@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v={{ versao }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/tema.css') }}?v={{ versao }}">
-  <script>try { const t = localStorage.getItem('bj-theme'); if (t) document.documentElement.dataset.theme = t } catch (e) {}</script>
+  <script>/* Tema claro por padrão; escuro só se a pessoa escolher no botão */ var t = 'light'; try { t = localStorage.getItem('bj-theme') || 'light' } catch (e) {} document.documentElement.dataset.theme = t</script>
 </head>
 <body>
 <div class="app">
