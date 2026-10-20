@@ -23,9 +23,9 @@ const isAdmin=ME.perfil==='admin', canJ=ME.perfil==='admin'||ME.perfil==='juridi
 let P=[],C=[],LOJAS=[],LISTAS={status:{},tipos_custa:[],categorias:[],identificacoes:[],perfis:{}},HOJE='';
 let LOADED=false,SYNC={at:null,err:null,busy:false};
 const _t=new Date();
-const S={page:'painel',loja:'',q:'',st:'todos',cv:'lista',cf:'atencao',cy:_t.getFullYear(),cm:_t.getMonth(),sel:'',bell:false,ord:'padrao',adm:'usuarios'};
-try{const sv=JSON.parse(localStorage.getItem('bj-estado')||'{}');if(sv.loja!==undefined)S.loja=sv.loja;if(sv.cv)S.cv=sv.cv}catch(e){}
-function salvaEstado(){try{localStorage.setItem('bj-estado',JSON.stringify({loja:S.loja,cv:S.cv}))}catch(e){}}
+const S={g:{st:'rosca',lj:'barras',dv:'barras'},page:'painel',loja:'',q:'',st:'todos',cv:'lista',cf:'atencao',cy:_t.getFullYear(),cm:_t.getMonth(),sel:'',bell:false,ord:'padrao',adm:'usuarios'};
+try{const sv=JSON.parse(localStorage.getItem('bj-estado')||'{}');if(sv.loja!==undefined)S.loja=sv.loja;if(sv.cv)S.cv=sv.cv;if(sv.g)Object.assign(S.g,sv.g)}catch(e){}
+function salvaEstado(){try{localStorage.setItem('bj-estado',JSON.stringify({loja:S.loja,cv:S.cv,g:S.g}))}catch(e){}}
 
 async function api(path,opts={}){
   const o={method:opts.method||'GET',headers:{'X-Requested-With':'fetch'},credentials:'same-origin'};
@@ -131,21 +131,50 @@ function painel(){
     ${kpi('wallet','Recebido',fmt0(tPago),tAc>tPago?`falta receber ${fmt0(tAc-tPago)}`:'','pos')}
     ${kpi('receipt','Custas a pagar',String(abertas.length),venc.length?`${venc.length} vencida${venc.length>1?'s':''}`:`${fmt0(soma(abertas,'valor'))} lançado`,venc.length?'neg':'warn')}
   </div>`;
-  const st=porStatus(),totSt=st.reduce((x,r)=>x+r[1],0)||1,maxSt=Math.max(...st.map(r=>r[1]),1);
   const nSt=k=>cob.filter(p=>(p.status||'Sem status')===k).length;
-  const lj=porLoja(),top=lj.slice(0,8),resto=lj.slice(8),maxLj=Math.max(...top.map(r=>r[1]),1);
   const nLj=k=>cob.filter(p=>(p.loja||'Sem loja')===k).length;
-  const barra=(rot,v,max,sub,attrs)=>`<button class="hb" ${attrs} title="${esc(rot)}: ${fmt(v)}${sub?' ('+sub+')':''}"><span class="hb-l">${esc(rot)}</span><span class="hb-t"><i style="width:${Math.max(v/max*100,v?1.5:0)}%"></i></span><span class="hb-v num">${fmt0(v)}<small>${sub}</small></span></button>`;
+  const totSt=porStatus().reduce((x,r)=>x+r[1],0)||1;
+  const rSt=porStatus().map(([k,v])=>({k,v,cor:corStatus(k),sub:`${nSt(k)} · ${Math.round(v/totSt*100)}%`,attrs:`data-gost="${esc(k)}"`}));
+  const cLj=coresEntidade(P.filter(p=>p.tipo==='cobranca'),p=>p.loja||'Sem loja',p=>Number(p.valor)||0);
+  const rLj=porLoja().map(([k,v])=>({k,v,cor:cLj(k),sub:`${nLj(k)} ${nLj(k)===1?'cliente':'clientes'}`,attrs:`data-golj="${esc(k)}"`}));
+  const mDv={};div.forEach(p=>{const k=p.tipo_acao||'Sem tipo';mDv[k]=(mDv[k]||0)+1});
+  const cDv=coresEntidade(P.filter(p=>p.tipo==='diversos'),p=>p.tipo_acao||'Sem tipo',()=>1);
+  const rDv=Object.entries(mDv).sort((a,b)=>b[1]-a[1]).map(([k,v])=>({k,v,cor:cDv(k),sub:'',attrs:`data-godiv="${esc(k)}"`}));
+  const cond=soma(div,'valor');
+  G={};
   h+=`<div class="g2 g2-eq">
-    <section class="card"><div class="card-h"><h2>Cobrança por status</h2><span class="sub">valor da dívida</span></div><div class="card-b"><div class="pie-st"><div class="pie-box"><canvas id="cSt" role="img" aria-label="Distribuição do valor em cobrança por status"></canvas><div class="center"><small>Todos os status</small><b class="num">${fmt0(totSt)}</b></div></div>
-      <ul class="pie-lgd">${st.map(([k,v])=>`<li><button data-gost="${esc(k)}" title="Ver processos: ${esc(k)}"><i style="background:${corStatus(k)}"></i><span>${esc(k)}</span><b class="num">${fmt0(v)}</b><small class="num">${nSt(k)} · ${Math.round(v/totSt*100)}%</small></button></li>`).join('')}</ul></div></div></section>
-    <section class="card"><div class="card-h"><h2>Cobrança por loja</h2><span class="sub">${lj.length} lojas, maiores valores</span></div><div class="card-b hb-list">${top.map(([k,v])=>barra(k,v,maxLj,`${nLj(k)} ${nLj(k)===1?'cliente':'clientes'}`,`data-golj="${esc(k)}"`)).join('')}${resto.length?`<p class="hint" style="margin:6px 0 0">Outras ${resto.length} lojas somam ${fmt0(resto.reduce((x,r)=>x+r[1],0))}.</p>`:''}</div></section>
+    ${cardGraf('st','Cobrança por status','valor da dívida',rSt,{centro:'Todos os status',maxPie:9,maxBar:9,aria:'Valor em cobrança por status'})}
+    ${cardGraf('lj','Cobrança por loja',`${rLj.length} lojas, maiores valores`,rLj,{centro:'Todas as lojas',outros:n=>`Outras ${n} lojas`,aria:'Valor em cobrança por loja'})}
   </div>
   <div class="g2 g2-eq">
     <section class="card"><div class="card-h"><h2>Próximas custas</h2><button class="link" data-page="custas">Calendário</button></div><div class="card-b">${proxCustas()}</div></section>
-    <section class="card"><div class="card-h"><h2>Processos diversos</h2><button class="link" data-page="diversos">Ver todos</button></div><div class="card-b">${resumoDiv(div)}</div></section>
+    ${div.length?cardGraf('dv','Processos diversos',`${div.length} processos`,rDv,{centro:'Processos',cont:true,maxBar:7,outros:n=>`Outros ${n} tipos`,aria:'Processos diversos por tipo de ação'}):`<section class="card"><div class="card-h"><h2>Processos diversos</h2></div><div class="card-b"><p class="empty">Nenhum processo diverso.</p></div></section>`}
   </div>`;
   return h;
+}
+/* Gráfico com opção Rosca ou Barras (a escolha fica salva no navegador) */
+let G={};
+function coresEntidade(lista,chave,peso){ // cor fixa por item: ordem pelo total de toda a base, não pelo filtro atual
+  const m={};lista.forEach(p=>{const k=chave(p);m[k]=(m[k]||0)+peso(p)});
+  const ord=Object.entries(m).sort((a,b)=>b[1]-a[1]).map(x=>x[0]);
+  return k=>{const i=ord.indexOf(k);return i>=0&&i<7?cssv('--s'+(i+1)):cssv('--s0')};
+}
+function cardGraf(key,titulo,sub,rows,o){
+  const modo=S.g[key]||'rosca',fv=o.cont?(v=>String(v)):fmt0,tot=rows.reduce((x,r)=>x+r.v,0)||1;
+  const tools=`<div class="tools"><div class="mseg" role="group" aria-label="Tipo de gráfico"><button class="${modo==='rosca'?'active':''}" data-graf="${key}:rosca" title="Rosca">${icon('circle-dot')}Rosca</button><button class="${modo==='barras'?'active':''}" data-graf="${key}:barras" title="Barras">${icon('bar-chart-horizontal')}Barras</button></div></div>`;
+  let corpo;
+  if(!rows.length)corpo='<p class="empty">Sem dados.</p>';
+  else if(modo==='barras'){
+    const top=rows.slice(0,o.maxBar||8),resto=rows.slice(top.length),max=Math.max(...top.map(r=>r.v),1),sr=resto.reduce((x,r)=>x+r.v,0);
+    corpo=`<div class="hb-list">${top.map(r=>`<button class="hb ${o.cont?'hb-n':''}" ${r.attrs} title="${esc(r.k)}: ${fv(r.v)}"><span class="hb-l">${esc(r.k)}</span><span class="hb-t"><i style="width:${Math.max(r.v/max*100,r.v?1.5:0)}%"></i></span><span class="hb-v num">${fv(r.v)}${r.sub?`<small>${r.sub}</small>`:''}</span></button>`).join('')}${resto.length?`<p class="hint" style="margin:6px 0 0">${o.outros(resto.length)} somam ${fv(sr)}.</p>`:''}</div>`;
+  }else{
+    let fat=rows.slice(0,o.maxPie||6);const resto=rows.slice(fat.length);
+    if(resto.length)fat=[...fat,{k:o.outros(resto.length),v:resto.reduce((x,r)=>x+r.v,0),cor:cssv('--s0'),sub:'',attrs:''}];
+    G[key]={fat,tot,fv};
+    corpo=`<div class="pie-st"><div class="pie-box"><canvas id="cg-${key}" role="img" aria-label="${esc(o.aria)}"></canvas><div class="center"><small>${o.centro}</small><b class="num">${fv(tot)}</b></div></div>
+      <ul class="pie-lgd">${fat.map(r=>`<li><button ${r.attrs||'disabled'}><i style="background:${r.cor}"></i><span>${esc(r.k)}</span><b class="num">${fv(r.v)}</b><small class="num">${r.sub&&!o.cont?r.sub:Math.round(r.v/tot*100)+'%'}</small></button></li>`).join('')}</ul></div>`;
+  }
+  return `<section class="card" id="card-${key}"><div class="card-h"><h2>${titulo}</h2><span class="sub">${sub}</span>${tools}</div><div class="card-b">${corpo}</div></section>`;
 }
 function corStatus(k){const ord=LISTAS.status.cobranca||[];const i=ord.indexOf(k);return i<0?cssv('--s0'):cssv('--s'+(i%7+1))}
 function porLoja(){const m={};ativos().filter(p=>p.tipo==='cobranca').forEach(p=>{const k=p.loja||'Sem loja';m[k]=(m[k]||0)+(Number(p.valor)||0)});return Object.entries(m).sort((a,b)=>b[1]-a[1])}
@@ -153,13 +182,6 @@ function porStatus(){const m={};ativos().filter(p=>p.tipo==='cobranca').forEach(
 function proxCustas(){
   const l=custasVis().filter(c=>!c.pago&&c.vencimento&&c.vencimento>=HOJE).slice(0,6);
   return l.length?`<div class="ulist">${l.map(c=>cRow(c,true)).join('')}</div>`:'<p class="empty">Nenhuma custa a vencer.</p>';
-}
-function resumoDiv(div){
-  if(!div.length)return '<p class="empty">Nenhum processo diverso.</p>';
-  const m={};div.forEach(p=>{const k=p.tipo_acao||'Sem tipo';m[k]=(m[k]||0)+1});
-  const rows=Object.entries(m).sort((a,b)=>b[1]-a[1]),max=rows[0][1];
-  const cond=soma(div,'valor');
-  return `<p class="insight"><b>${div.length} processos</b>${cond?`<span>${fmt0(cond)} em condenações registradas</span>`:''}</p><div class="hb-list">${rows.slice(0,7).map(([k,v])=>`<button class="hb hb-n" data-godiv="${esc(k)}" title="${esc(k)}: ${v}"><span class="hb-l">${esc(k)}</span><span class="hb-t"><i style="width:${v/max*100}%"></i></span><span class="hb-v num">${v}</span></button>`).join('')}</div>`;
 }
 function cRow(c,compacto){
   const p=proc(c.processo_id),d=c.vencimento?dParts(c.vencimento):null;
@@ -175,15 +197,18 @@ function baseOpts(){const ink=cssv('--ink'),surf=cssv('--surface'),line=cssv('--
 function mountCharts(){
   CH.forEach(c=>c.destroy());CH=[];
   if(S.page!=='painel'||!window.Chart)return;
-  const el=$('#cSt');if(!el)return;
   Chart.defaults.font.family="'Poppins',system-ui,sans-serif";Chart.defaults.font.size=11.5;Chart.defaults.color=cssv('--muted');
-  const st=porStatus(),tot=st.reduce((x,r)=>x+r[1],0)||1,surf=cssv('--surface'),ink=cssv('--ink'),line=cssv('--line');
-  CH.push(new Chart(el,{type:'doughnut',data:{labels:st.map(r=>r[0]),datasets:[{data:st.map(r=>r[1]),backgroundColor:st.map(r=>corStatus(r[0])),borderColor:surf,borderWidth:2,hoverOffset:6,spacing:1}]},
-    options:{responsive:true,maintainAspectRatio:false,cutout:'70%',animation:matchMedia('(prefers-reduced-motion: reduce)').matches?false:{duration:500},layout:{padding:6},
-      onClick:(e,els)=>{if(els.length){S.page='cobranca';S.st=st[els[0].index][0];S.q='';render();window.scrollTo(0,0)}},
-      onHover:(e,els)=>{e.native.target.style.cursor=els.length?'pointer':'default'},
-      plugins:{legend:{display:false},tooltip:{backgroundColor:surf,titleColor:ink,bodyColor:ink,borderColor:line,borderWidth:1,padding:12,cornerRadius:8,boxPadding:4,
-        callbacks:{label:c=>` ${fmt0(c.parsed)} (${Math.round(c.parsed/tot*100)}%)`}}}}}));
+  const surf=cssv('--surface'),ink=cssv('--ink'),line=cssv('--line'),anim=matchMedia('(prefers-reduced-motion: reduce)').matches?false:{duration:500};
+  Object.entries(G).forEach(([key,g])=>{
+    const el=$('#cg-'+key);if(!el)return;
+    const leg=()=>document.querySelectorAll(`#card-${key} .pie-lgd button`);
+    CH.push(new Chart(el,{type:'doughnut',data:{labels:g.fat.map(r=>r.k),datasets:[{data:g.fat.map(r=>r.v),backgroundColor:g.fat.map(r=>r.cor),borderColor:surf,borderWidth:2,hoverOffset:6,spacing:1}]},
+      options:{responsive:true,maintainAspectRatio:false,cutout:'70%',animation:anim,layout:{padding:6},
+        onClick:(e,els)=>{if(els.length){const b=leg()[els[0].index];if(b&&!b.disabled)b.click()}},
+        onHover:(e,els)=>{const b=els.length&&leg()[els[0].index];e.native.target.style.cursor=b&&!b.disabled?'pointer':'default'},
+        plugins:{legend:{display:false},tooltip:{backgroundColor:surf,titleColor:ink,bodyColor:ink,borderColor:line,borderWidth:1,padding:12,cornerRadius:8,boxPadding:4,
+          callbacks:{label:c=>` ${g.fv(c.parsed)} (${Math.round(c.parsed/g.tot*100)}%)`}}}}}));
+  });
 }
 
 /* ================= Listas (Cobrança e Diversos) ================= */
@@ -438,6 +463,7 @@ document.addEventListener('click',async e=>{
   if(d.gost!==undefined){S.page='cobranca';S.st=d.gost;S.q='';render();window.scrollTo(0,0);return}
   if(d.golj!==undefined){S.page='cobranca';S.st='todos';S.loja=d.golj==='Sem loja'?'':d.golj;S.q='';salvaEstado();render();window.scrollTo(0,0);return}
   if(d.godiv!==undefined){S.page='diversos';S.st='todos';S.q=d.godiv==='Sem tipo'?'':d.godiv;render();window.scrollTo(0,0);return}
+  if(d.graf){const [k,v]=d.graf.split(':');S.g[k]=v;salvaEstado();render();return}
   if(d.csv){exportarCSV(d.csv);return}
   if(d.act==='novo'){openNovo(d.tipo);return}
   if(d.novotipo){openNovo(d.novotipo);return}

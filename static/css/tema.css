@@ -276,3 +276,9 @@ a.btn{text-decoration:none;color:var(--ink)} a.btn.primary{color:var(--primary-i
 @media (max-width:900px){
   .side .nav button.active,.side .nav-extra.active{background:rgba(255,255,255,.16);color:#fff}
 }
+
+/* Seletor Rosca | Barras e legenda */
+.card-h .tools .mseg button{padding:4px 9px;font-size:12px}
+.pie-lgd button[disabled]{cursor:default}
+.pie-lgd button[disabled]:hover{background:none}
+@media (max-width:520px){.card-h .tools{margin-left:0;width:100%}}
