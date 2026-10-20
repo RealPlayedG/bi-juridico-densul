@@ -258,3 +258,21 @@ a.btn{text-decoration:none;color:var(--ink)} a.btn.primary{color:var(--primary-i
 .pie-lgd small{grid-column:2/-1;color:var(--muted);font-size:11.5px;margin-top:-2px}
 @media (max-width:1300px) and (min-width:1101px){.pie-st{grid-template-columns:minmax(0,1fr)}.pie-box{max-width:200px;width:100%;margin:0 auto}}
 @media (max-width:520px){.pie-st{grid-template-columns:minmax(0,1fr)}.pie-box{max-width:200px;width:100%;margin:0 auto}}
+/* ---------- Barra lateral azul ---------- */
+:root{--sb:#12509a;--sb-ink:#c9daf0;--sb-hover:rgba(255,255,255,.1);--sb-line:rgba(255,255,255,.16)}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--sb:#102a4c;--sb-ink:#a9bfdc;--sb-hover:rgba(255,255,255,.07);--sb-line:rgba(255,255,255,.1)}}
+:root[data-theme="dark"]{--sb:#102a4c;--sb-ink:#a9bfdc;--sb-hover:rgba(255,255,255,.07);--sb-line:rgba(255,255,255,.1)}
+.side{background:var(--sb);border-right:0;color:var(--sb-ink)}
+.side .mark{background:#fff;color:#12509a}
+.side .brand b{color:#fff}
+.side .brand small{color:var(--sb-ink)}
+.side .nav button,.side .nav-extra{color:var(--sb-ink)}
+.side .nav button:hover,.side .nav-extra:hover{background:var(--sb-hover);color:#fff}
+.side .nav button.active,.side .nav-extra.active{background:#fff;color:#12509a}
+.side .nav button.active::before,.side .nav-extra.active::before{display:none}
+.side .nav button:focus-visible,.side .nav-extra:focus-visible{outline-color:#fff}
+.side .nav-extra::after{border-top-color:var(--sb-line)}
+.side .nav .badge{background:#e5484d;color:#fff}
+@media (max-width:900px){
+  .side .nav button.active,.side .nav-extra.active{background:rgba(255,255,255,.16);color:#fff}
+}
