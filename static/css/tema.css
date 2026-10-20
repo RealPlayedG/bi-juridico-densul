@@ -282,3 +282,9 @@ a.btn{text-decoration:none;color:var(--ink)} a.btn.primary{color:var(--primary-i
 .pie-lgd button[disabled]{cursor:default}
 .pie-lgd button[disabled]:hover{background:none}
 @media (max-width:520px){.card-h .tools{margin-left:0;width:100%}}
+/* Cabeçalho do card: subtítulo encurta, seletor fica na mesma linha */
+@media (min-width:521px){
+  .card-h:has(.tools){flex-wrap:nowrap}
+  .card-h:has(.tools) .sub{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .card-h .tools{flex:none}
+}
