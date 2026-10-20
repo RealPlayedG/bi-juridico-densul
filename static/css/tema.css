@@ -223,3 +223,20 @@ a.btn{text-decoration:none;color:var(--ink)} a.btn.primary{color:var(--primary-i
 .hb.hb-n{grid-template-columns:minmax(96px,150px) minmax(0,1fr) 32px}
 @media (max-width:600px){.hb.hb-n{grid-template-columns:minmax(0,1fr) 32px}}
 .g2.g2-eq>.card>.card-b{justify-content:flex-start}
+
+/* ---------- Logo Densul (só no login) ---------- */
+.logo-box{display:inline-block;line-height:0}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .logo-box{background:#fff;border-radius:6px;padding:6px 8px}}
+:root[data-theme="dark"] .logo-box{background:#fff;border-radius:6px;padding:6px 8px}
+.kpi-v{font-size:clamp(20px,1.85vw,27px);white-space:nowrap}
+/* Linha de custa em espaço estreito (painel do calendário, celular): empilha em vez de espremer */
+.card-b{container-type:inline-size}
+@container (max-width:560px){
+  .crow{grid-template-columns:auto minmax(0,1fr) auto;row-gap:8px}
+  .crow .t b{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .crow .acts{grid-column:1/-1;justify-content:flex-end}
+}
+@container (max-width:360px){
+  .crow{grid-template-columns:auto minmax(0,1fr)}
+  .crow .v{grid-column:2;text-align:left;font-size:13px}
+}
