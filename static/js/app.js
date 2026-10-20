@@ -394,10 +394,10 @@ async function enviarAnexo(pid,cid,cat,files,link){
 }
 
 /* ================= Administração ================= */
-let ADM={usuarios:null,historico:null,backups:null};
+let ADM={usuarios:null,historico:null,backups:null,espelho:null};
 function pgAdmin(){
   if(!isAdmin)return '<p class="empty">Sem acesso.</p>';
-  const tabs=[['usuarios','Usuários','users'],['lojas','Lojas','store'],['historico','Histórico','history'],['backups','Backups','archive'],['importar','Importar planilha','file-up']];
+  const tabs=[['usuarios','Usuários','users'],['lojas','Lojas','store'],['historico','Histórico','history'],['backups','Backups','archive'],['espelho','Planilha espelho','sheet'],['importar','Importar planilha','file-up']];
   return `<div class="ph"><div><h1>Administração</h1></div></div><div>${mseg('adm',tabs)}</div><div id="adm">${admBody()}</div>`;
 }
 function admBody(){
@@ -414,6 +414,13 @@ function admBody(){
     if(!ADM.backups)return '<div class="loading" style="min-height:160px"><span class="spin"></span></div>';
     return `<section class="card"><div class="card-h"><h2>Backups</h2><span class="sub">um por dia (60 dias), um antes de cada atualização do sistema e antes de importar</span><div class="tools"><button class="btn sm primary" data-backup-agora="1">${icon('archive')}Fazer backup agora</button></div></div><div class="card-b"><div class="bk-list">${ADM.backups.length?ADM.backups.map(b=>`<a class="bk-item" href="/backups/${encodeURIComponent(b.nome)}">${icon('file-archive')}<span>${esc(b.nome.replace('bi-juridico-','').replace('.zip',''))}</span><small>${(b.tamanho/1024).toFixed(0)} KB</small>${icon('download')}</a>`).join(''):'<p class="empty">Nenhum backup ainda. O primeiro sai em até 1 hora.</p>'}</div><p class="hint" style="margin-top:12px">Cada arquivo tem os dados completos (dados.json) e uma planilha para abrir no Excel (planilha.xlsx).</p></div></section>`;
   }
+  if(S.adm==='espelho'){
+    const e=ADM.espelho;if(!e)return '<div class="loading" style="min-height:160px"><span class="spin"></span></div>';
+    return `<section class="card"><div class="card-h"><h2>Planilha espelho</h2><span class="sub">cópia da planilha Jurídico, atualizada pelo sistema</span><div class="tools">${e.configurado?`<button class="btn sm primary" data-espelho-agora="1">${icon('refresh-cw')}Atualizar agora</button>`:''}</div></div><div class="card-b" style="display:flex;flex-direction:column;gap:12px">
+      ${e.url?`<a class="bk-item" href="${esc(e.url)}" target="_blank" rel="noopener">${icon('sheet')}<span>Abrir a planilha espelho</span>${icon('external-link')}</a>`:''}
+      ${!e.configurado?`<div class="box miss">${icon('alert-triangle')}Falta configurar no Railway: ESPELHO_PLANILHA_ID e GOOGLE_CREDENTIALS_JSON.</div>`:e.erro?`<div class="box miss">${icon('alert-triangle')}${esc(e.erro)}</div>`:e.ultima?`<div class="box ok">${icon('check')}Atualizada em ${brDT(e.ultima)} com ${e.linhas} processos.</div>`:`<div class="box">${icon('loader')}Aguardando a primeira atualização (até 1 minuto).</div>`}
+      <p class="hint">O sistema reescreve as abas Cobrança e Processos Diversos cerca de 1 minuto depois de qualquer alteração. Cabeçalho, totais e as outras abas ficam como estão. O que for digitado na planilha não volta para o sistema e é apagado na próxima atualização.</p></div></section>`;
+  }
   if(S.adm==='importar')return `<section class="card"><div class="card-h"><h2>Importar planilha</h2></div><div class="card-b"><p class="hint">Envie a planilha Jurídico em .xlsx (no Google Sheets: Arquivo › Fazer download › Microsoft Excel). Entram as abas Cobrança e Processos Diversos, com notas, custas e links do Drive. Um backup é feito antes.</p><form id="f-imp" class="filters" style="padding:14px 0 0"><input type="file" id="imp-arq" accept=".xlsx" required><button class="btn primary">${icon('file-up')}Importar</button></form><div id="imp-res"></div></div></section>`;
   return '';
 }
@@ -423,6 +430,7 @@ async function carregaAdmin(){
     if(S.adm==='usuarios'&&!ADM.usuarios){ADM.usuarios=(await api('/api/usuarios')).usuarios}
     else if(S.adm==='historico'&&!ADM.historico){ADM.historico=(await api('/api/historico')).itens}
     else if(S.adm==='backups'&&!ADM.backups){ADM.backups=(await api('/api/backups')).backups}
+    else if(S.adm==='espelho'&&!ADM.espelho){ADM.espelho=await api('/api/espelho')}
     else return;
     if(S.page==='admin'){$('#adm').innerHTML=admBody();drawIcons()}
   }catch(e){toast(e.message)}
@@ -482,6 +490,7 @@ document.addEventListener('click',async e=>{
   if(d.novoUser){openUser();return}
   if(d.editUser){openUser(ADM.usuarios.find(u=>u.id===+d.editUser));return}
   if(d.reset){if(!confirma(t,'Confirmar: voltar para a padrão?'))return;try{await api(`/api/usuarios/${d.reset}/redefinir`,{method:'POST'});toast('Pronto. No próximo acesso a pessoa entra com a senha padrão e cria outra.');ADM.usuarios=null;closeLayer();carregaAdmin()}catch(er){toast(er.message)}return}
+  if(d.espelhoAgora){t.disabled=true;try{const r=await api('/api/espelho',{method:'POST'});toast(`Planilha atualizada com ${r.linhas} processos.`)}catch(er){toast(er.message)}ADM.espelho=null;carregaAdmin();return}
   if(d.backupAgora){t.disabled=true;try{await api('/api/backups',{method:'POST'});toast('Backup feito.');ADM.backups=null;carregaAdmin()}catch(er){toast(er.message)}t.disabled=false;return}
   if(d.histMais){const mais=(await api('/api/historico?antes='+ADM.historico[ADM.historico.length-1].id)).itens;ADM.historico=ADM.historico.concat(mais);$('#adm').innerHTML=admBody();drawIcons();return}
   if(t.id==='themeBtn'){const n=isDark()?'light':'dark';document.documentElement.dataset.theme=n;try{localStorage.setItem('bj-theme',n)}catch(er){}render();return}

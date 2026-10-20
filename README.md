@@ -61,6 +61,17 @@ python restaurar.py /data/backups/<arquivo>.zip --confirmar
 **Código:** antes de cada alteração, a versão em uso é copiada para uma branch `backup/...` no GitHub.
 No Railway também dá para voltar a qualquer publicação anterior em Deployments > Redeploy.
 
+## Planilha espelho
+
+Cópia da planilha "Jurídico" que o sistema mantém atualizada (variáveis `ESPELHO_PLANILHA_ID` e
+`GOOGLE_CREDENTIALS_JSON`, a mesma conta de serviço do BI Evaristo, com acesso de editor na planilha).
+
+- Cerca de 1 minuto depois de qualquer alteração, o sistema reescreve as abas **Cobrança** e **Processos Diversos**
+  a partir da linha abaixo do cabeçalho. Cabeçalho, totais, formatação, listas de opções e as outras abas ficam como estão.
+- Considerações = último andamento. Custas - Inicial = próxima custa inicial em aberto; Custas - Serviço = próxima das demais.
+- É só leitura: o que for digitado nela não volta para o sistema e é apagado na atualização seguinte.
+- Administração > Planilha espelho mostra o link, a última atualização e o botão "Atualizar agora".
+
 ## Rodar no computador
 
 ```bash

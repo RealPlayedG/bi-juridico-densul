@@ -26,6 +26,7 @@ from werkzeug.utils import secure_filename
 load_dotenv()
 
 import backup  # noqa: E402
+import espelho  # noqa: E402
 from db import (CATEGORIAS_ANEXO, IDENTIFICACOES, PERFIS, STATUS, TIPOS_CUSTA, agora, andamentos, anexos,  # noqa: E402
                 criar_tabelas, custas, engine, garantir_admin, historico, linha, lojas, processos, registrar, usuarios)
 from sqlalchemy import and_, func, insert, select, update  # noqa: E402
@@ -748,7 +749,29 @@ def baixar_backup(nome):
     return send_from_directory(backup.PASTA, secure_filename(nome), as_attachment=True)
 
 
+# ---------- planilha espelho (administrador) ----------
+
+@app.route("/api/espelho")
+@logado
+@so("admin")
+def api_espelho():
+    return jsonify(configurado=espelho.configurado(), url=espelho.url(), **{k: v for k, v in espelho.ESTADO.items() if k != "historico_id"})
+
+
+@app.post("/api/espelho")
+@logado
+@so("admin")
+def api_espelho_agora():
+    if not espelho.configurado():
+        return jsonify(erro="A planilha espelho ainda não está configurada no Railway."), 400
+    ok = espelho.sincronizar("manual")
+    if not ok:
+        return jsonify(erro="Não foi possível atualizar a planilha: " + (espelho.ESTADO["erro"] or "")), 502
+    return jsonify(ok=True, ultima=espelho.ESTADO["ultima"], linhas=espelho.ESTADO["linhas"])
+
+
 backup.rotina_diaria()
+espelho.rotina()
 
 if __name__ == "__main__":
     app.run(debug=os.environ.get("DEBUG") == "1", port=int(os.environ.get("PORT", 5000)))
