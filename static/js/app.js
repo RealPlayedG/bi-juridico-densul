@@ -137,7 +137,8 @@ function painel(){
   const nLj=k=>cob.filter(p=>(p.loja||'Sem loja')===k).length;
   const barra=(rot,v,max,sub,attrs)=>`<button class="hb" ${attrs} title="${esc(rot)}: ${fmt(v)}${sub?' ('+sub+')':''}"><span class="hb-l">${esc(rot)}</span><span class="hb-t"><i style="width:${Math.max(v/max*100,v?1.5:0)}%"></i></span><span class="hb-v num">${fmt0(v)}<small>${sub}</small></span></button>`;
   h+=`<div class="g2 g2-eq">
-    <section class="card"><div class="card-h"><h2>Cobrança por status</h2><span class="sub">valor da dívida</span></div><div class="card-b hb-list">${st.map(([k,v])=>barra(k,v,maxSt,`${nSt(k)} · ${Math.round(v/totSt*100)}%`,`data-gost="${esc(k)}"`)).join('')}</div></section>
+    <section class="card"><div class="card-h"><h2>Cobrança por status</h2><span class="sub">valor da dívida</span></div><div class="card-b"><div class="pie-st"><div class="pie-box"><canvas id="cSt" role="img" aria-label="Distribuição do valor em cobrança por status"></canvas><div class="center"><small>Todos os status</small><b class="num">${fmt0(totSt)}</b></div></div>
+      <ul class="pie-lgd">${st.map(([k,v])=>`<li><button data-gost="${esc(k)}" title="Ver processos: ${esc(k)}"><i style="background:${corStatus(k)}"></i><span>${esc(k)}</span><b class="num">${fmt0(v)}</b><small class="num">${nSt(k)} · ${Math.round(v/totSt*100)}%</small></button></li>`).join('')}</ul></div></div></section>
     <section class="card"><div class="card-h"><h2>Cobrança por loja</h2><span class="sub">${lj.length} lojas, maiores valores</span></div><div class="card-b hb-list">${top.map(([k,v])=>barra(k,v,maxLj,`${nLj(k)} ${nLj(k)===1?'cliente':'clientes'}`,`data-golj="${esc(k)}"`)).join('')}${resto.length?`<p class="hint" style="margin:6px 0 0">Outras ${resto.length} lojas somam ${fmt0(resto.reduce((x,r)=>x+r[1],0))}.</p>`:''}</div></section>
   </div>
   <div class="g2 g2-eq">
@@ -146,6 +147,7 @@ function painel(){
   </div>`;
   return h;
 }
+function corStatus(k){const ord=LISTAS.status.cobranca||[];const i=ord.indexOf(k);return i<0?cssv('--s0'):cssv('--s'+(i%7+1))}
 function porLoja(){const m={};ativos().filter(p=>p.tipo==='cobranca').forEach(p=>{const k=p.loja||'Sem loja';m[k]=(m[k]||0)+(Number(p.valor)||0)});return Object.entries(m).sort((a,b)=>b[1]-a[1])}
 function porStatus(){const m={};ativos().filter(p=>p.tipo==='cobranca').forEach(p=>{const k=p.status||'Sem status';m[k]=(m[k]||0)+(Number(p.valor)||0)});const ord=[...(LISTAS.status.cobranca||[]),'Sem status'];return Object.entries(m).sort((a,b)=>ord.indexOf(a[0])-ord.indexOf(b[0]))}
 function proxCustas(){
@@ -173,12 +175,15 @@ function baseOpts(){const ink=cssv('--ink'),surf=cssv('--surface'),line=cssv('--
 function mountCharts(){
   CH.forEach(c=>c.destroy());CH=[];
   if(S.page!=='painel'||!window.Chart)return;
-  Chart.defaults.font.family="'Poppins',system-ui,sans-serif";Chart.defaults.font.size=11.5;Chart.defaults.font.size=11.5;Chart.defaults.color=cssv('--muted');
-  const corSt=s=>{const c=stCls(s);return cssv(c==='s-aberto'?'--accent':c==='s-peticao'?'--warn':c==='s-docs'?'--nt':c==='s-acordo'||c==='s-fim'?'--pos':c==='s-neg'?'--neg':'--c8')};
-  const st=porStatus(),a=$('#cSt');
-  if(a&&st.length)CH.push(new Chart(a,{type:'bar',data:{labels:st.map(x=>x[0]),datasets:[{data:st.map(x=>x[1]),backgroundColor:st.map(x=>corSt(x[0])),borderRadius:8,borderSkipped:false,maxBarThickness:26}]},options:baseOpts()}));
-  const lj=porLoja().slice(0,14),b=$('#cLj');
-  if(b&&lj.length)CH.push(new Chart(b,{type:'bar',data:{labels:lj.map(x=>x[0]),datasets:[{data:lj.map(x=>x[1]),backgroundColor:cssv('--c1'),borderRadius:6,borderSkipped:false,maxBarThickness:18}]},options:baseOpts()}));
+  const el=$('#cSt');if(!el)return;
+  Chart.defaults.font.family="'Poppins',system-ui,sans-serif";Chart.defaults.font.size=11.5;Chart.defaults.color=cssv('--muted');
+  const st=porStatus(),tot=st.reduce((x,r)=>x+r[1],0)||1,surf=cssv('--surface'),ink=cssv('--ink'),line=cssv('--line');
+  CH.push(new Chart(el,{type:'doughnut',data:{labels:st.map(r=>r[0]),datasets:[{data:st.map(r=>r[1]),backgroundColor:st.map(r=>corStatus(r[0])),borderColor:surf,borderWidth:2,hoverOffset:6,spacing:1}]},
+    options:{responsive:true,maintainAspectRatio:false,cutout:'70%',animation:matchMedia('(prefers-reduced-motion: reduce)').matches?false:{duration:500},layout:{padding:6},
+      onClick:(e,els)=>{if(els.length){S.page='cobranca';S.st=st[els[0].index][0];S.q='';render();window.scrollTo(0,0)}},
+      onHover:(e,els)=>{e.native.target.style.cursor=els.length?'pointer':'default'},
+      plugins:{legend:{display:false},tooltip:{backgroundColor:surf,titleColor:ink,bodyColor:ink,borderColor:line,borderWidth:1,padding:12,cornerRadius:8,boxPadding:4,
+        callbacks:{label:c=>` ${fmt0(c.parsed)} (${Math.round(c.parsed/tot*100)}%)`}}}}}));
 }
 
 /* ================= Listas (Cobrança e Diversos) ================= */

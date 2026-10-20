@@ -240,3 +240,21 @@ a.btn{text-decoration:none;color:var(--ink)} a.btn.primary{color:var(--primary-i
   .crow{grid-template-columns:auto minmax(0,1fr)}
   .crow .v{grid-column:2;text-align:left;font-size:13px}
 }
+
+/* ---------- Rosca de status (paleta categórica validada para daltonismo, cor fixa por status) ---------- */
+:root{--s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;--s4:#eda100;--s5:#e87ba4;--s6:#008300;--s7:#6250d6;--s0:#9aa3ab}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--s1:#3987e5;--s2:#d95926;--s3:#199e70;--s4:#c98500;--s5:#d55181;--s6:#008300;--s7:#9085e9;--s0:#6f7b86}}
+:root[data-theme="dark"]{--s1:#3987e5;--s2:#d95926;--s3:#199e70;--s4:#c98500;--s5:#d55181;--s6:#008300;--s7:#9085e9;--s0:#6f7b86}
+.pie-st{display:grid;grid-template-columns:190px minmax(0,1fr);gap:22px;align-items:center}
+.pie-box{position:relative;height:190px}
+.pie-box .center b{font-size:16px}
+.pie-lgd{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:1px}
+.pie-lgd button{all:unset;box-sizing:border-box;width:100%;cursor:pointer;display:grid;grid-template-columns:10px minmax(0,1fr) auto;column-gap:10px;align-items:center;padding:6px 8px;border-radius:6px;font-size:13px}
+.pie-lgd button:hover{background:var(--surface-2)}
+.pie-lgd button:focus-visible{outline:2px solid var(--primary)}
+.pie-lgd i{width:10px;height:10px;border-radius:3px}
+.pie-lgd span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pie-lgd b{font-weight:600;text-align:right}
+.pie-lgd small{grid-column:2/-1;color:var(--muted);font-size:11.5px;margin-top:-2px}
+@media (max-width:1300px) and (min-width:1101px){.pie-st{grid-template-columns:minmax(0,1fr)}.pie-box{max-width:200px;width:100%;margin:0 auto}}
+@media (max-width:520px){.pie-st{grid-template-columns:minmax(0,1fr)}.pie-box{max-width:200px;width:100%;margin:0 auto}}
