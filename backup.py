@@ -43,12 +43,17 @@ def _valor(v):
 
 def _dump():
     from db import engine
-    existentes = set(inspect(engine).get_table_names())
+    insp = inspect(engine)
+    existentes = set(insp.get_table_names())
     dados = {}
     with engine.connect() as c:
         for t in _tabelas():
             if t.name in existentes:
-                dados[t.name] = [{k: _valor(v) for k, v in r._mapping.items()} for r in c.execute(select(t))]
+                # só as colunas que já existem no banco: o backup "antes da atualização" roda
+                # antes de o sistema criar colunas novas
+                cols_banco = {col["name"] for col in insp.get_columns(t.name)}
+                cols = [col for col in t.columns if col.name in cols_banco]
+                dados[t.name] = [{k: _valor(v) for k, v in r._mapping.items()} for r in c.execute(select(*cols))]
     return dados
 
 
