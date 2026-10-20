@@ -28,7 +28,10 @@ static/js       app.js (telas)
 | Anexar notas, boletos, comprovantes | Sim | Sim | Sim |
 | Usuários, lojas, histórico, backups, importar | Sim | Não | Não |
 
-Tudo o que é alterado fica no **histórico** (quem, quando, de quanto para quanto).
+Tudo o que é feito fica no **histórico**: quem (nome e usuário), quando, o quê, de quanto para quanto e o IP.
+Inclui entradas no sistema, tentativas de senha errada, backups e downloads de backup. Ninguém consegue apagar o histórico pelo sistema.
+Em Administração > Histórico dá para filtrar por pessoa e buscar por ação, cliente ou nº do processo; dentro de cada processo aparece
+o histórico só dele. Para isso funcionar, **cada pessoa precisa ter o próprio usuário** (nada de login compartilhado).
 
 ## Login
 

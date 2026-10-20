@@ -290,3 +290,4 @@ a.btn{text-decoration:none;color:var(--ink)} a.btn.primary{color:var(--primary-i
   .card-h:has(.tools) .sub{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .card-h .tools{flex:none}
 }
+.lg-d a{color:var(--primary);text-decoration:none;font-weight:500}.lg-d a:hover{text-decoration:underline}

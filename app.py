@@ -193,6 +193,11 @@ def login():
                 return redirect(url_for("trocar_senha" if not u["hash"] else "index"))
             _tentativas.setdefault(ip, []).append(time.time())
             erro = "Usuário ou senha incorretos."
+            with engine.begin() as c:
+                if u:
+                    registrar(c, u, "Tentativa de entrar com senha errada")
+                else:  # não grava o texto digitado: pode ser uma senha digitada no campo errado
+                    registrar(c, {"usuario": "?", "nome": "Desconhecido"}, "Tentativa de entrar com usuário inexistente")
     return render_template("login.html", erro=erro)
 
 
@@ -690,13 +695,22 @@ def api_nova_loja():
 @so("admin")
 def api_historico():
     antes = request.args.get("antes", type=int)
+    quem_ = request.args.get("usuario", "").strip().lower()
+    busca = request.args.get("q", "").strip()
     with engine.connect() as c:
         q = select(historico, processos.c.parte, processos.c.numero).select_from(
             historico.outerjoin(processos, historico.c.processo_id == processos.c.id)).order_by(historico.c.id.desc()).limit(100)
         if antes:
             q = q.where(historico.c.id < antes)
+        if quem_:
+            q = q.where(historico.c.usuario == quem_)
+        if busca:
+            like = f"%{busca}%"
+            q = q.where(historico.c.acao.ilike(like) | historico.c.detalhes.ilike(like) | processos.c.parte.ilike(like) | processos.c.numero.ilike(like))
         itens = [linha(r) for r in c.execute(q)]
-    return jsonify(itens=itens)
+        pessoas = [{"usuario": r.usuario, "nome": r.nome} for r in c.execute(
+            select(historico.c.usuario, func.max(historico.c.nome).label("nome")).group_by(historico.c.usuario).order_by(func.max(historico.c.nome)))]
+    return jsonify(itens=itens, pessoas=pessoas)
 
 
 # ---------- importação da planilha (administrador) ----------
@@ -739,13 +753,18 @@ def api_backups():
 @logado
 @so("admin")
 def api_backup_agora():
-    return jsonify(nome=os.path.basename(backup.fazer("manual")))
+    nome = os.path.basename(backup.fazer("manual"))
+    with engine.begin() as c:
+        registrar(c, eu(), "Backup feito manualmente", detalhes={"arquivo": nome})
+    return jsonify(nome=nome)
 
 
 @app.route("/backups/<path:nome>")
 @logado
 @so("admin")
 def baixar_backup(nome):
+    with engine.begin() as c:
+        registrar(c, eu(), "Backup baixado", detalhes={"arquivo": secure_filename(nome)})
     return send_from_directory(backup.PASTA, secure_filename(nome), as_attachment=True)
 
 
@@ -764,6 +783,8 @@ def api_espelho():
 def api_espelho_agora():
     if not espelho.configurado():
         return jsonify(erro="A planilha espelho ainda não está configurada no Railway."), 400
+    with engine.begin() as c:
+        registrar(c, eu(), "Planilha espelho atualizada manualmente")
     ok = espelho.sincronizar("manual")
     if not ok:
         return jsonify(erro="Não foi possível atualizar a planilha: " + (espelho.ESTADO["erro"] or "")), 502

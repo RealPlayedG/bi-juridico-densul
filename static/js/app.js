@@ -328,7 +328,7 @@ function renderProc(p){
       ${canF?(c.pago?`<button class="btn sm" data-despagar="${c.id}">Desfazer pagamento</button>`:`<button class="btn sm primary" data-pagar="${c.id}">${icon('check')}Marcar paga</button>`):''}</div></div>`}).join(''):'<p class="empty">Nenhuma custa lançada.</p>';
   const anxs=p.anexos.filter(a=>!a.custa_id);
   const anexH=anxs.length?`<ul class="anx-list">${anxs.map(a=>`<li><a href="${esc(a.url)}" target="_blank" rel="noopener">${icon(a.link?'external-link':'file')}<span>${esc(a.categoria)}: ${esc(a.nome)}</span><small class="muted">${esc(a.por)} · ${brDate(a.em)}</small></a>${a.por===ME.nome||isAdmin?`<button class="anx-del" data-del-anexo="${a.id}" title="Remover">${icon('trash-2')}</button>`:''}</li>`).join('')}</ul>`:'<p class="empty">Nenhum anexo.</p>';
-  const hist=p.historico.map(h=>{let det='';try{const d=JSON.parse(h.detalhes);if(Array.isArray(d))det=d.map(x=>`${x.campo}: ${x.de??'vazio'} → ${x.para??'vazio'}`).join('\n');else if(d&&typeof d==='object')det=Object.entries(d).filter(([,v])=>v!=null&&v!=='').map(([k,v])=>`${k}: ${Array.isArray(v)?v.join(', '):v}`).join(' · ')}catch(e){det=h.detalhes||''}return `<div><b>${esc(h.acao)}</b> · ${esc(h.nome)} · ${brDT(h.em)}${det?`<br><span style="white-space:pre-wrap">${esc(det)}</span>`:''}</div>`}).join('')||'Sem registros.';
+  const hist=p.historico.map(h=>{const det=h.detalhes?fmtDet(h.detalhes):'';return `<div><b>${esc(h.acao)}</b> · ${esc(h.nome)} (${esc(h.usuario)}) · ${brDT(h.em)}${det?`<br><span style="white-space:pre-wrap">${esc(det)}</span>`:''}</div>`}).join('')||'Sem registros.';
   openLayer(`<div class="m-h"><div style="min-width:0"><h2 style="overflow:hidden;text-overflow:ellipsis">${esc(parteNome(p))}</h2><small class="muted">${TIPO_NOME[tipo]} · ${p.numero?esc(p.numero):'sem nº de processo'}</small></div><button class="x" data-close="1" aria-label="Fechar">${icon('x')}</button></div>
   <div class="m-b">
     <div class="sec">
@@ -408,7 +408,10 @@ function admBody(){
   if(S.adm==='lojas')return `<section class="card"><div class="card-h"><h2>Lojas</h2><span class="sub">${LOJAS.length} cadastradas</span></div><div class="card-b"><form id="f-loja" class="filters" style="padding:0 0 14px"><div class="fld" style="flex:1;min-width:160px"><input id="lj-nome" placeholder="Nome da loja"></div><div class="fld" style="width:80px"><input id="lj-uf" placeholder="UF" maxlength="2"></div><button class="btn primary">${icon('plus')}Adicionar</button></form><div class="lojas-chk" style="max-height:none">${LOJAS.map(l=>`<span>${esc(l.nome)}${l.uf?` <span class="tag">${esc(l.uf)}</span>`:''} <small class="muted">${P.filter(p=>p.loja===l.nome).length}</small></span>`).join('')}</div></div></section>`;
   if(S.adm==='historico'){
     if(!ADM.historico)return '<div class="loading" style="min-height:160px"><span class="spin"></span></div>';
-    return `<section class="card"><div class="card-h"><h2>Histórico</h2><span class="sub">tudo que foi feito no sistema, do mais recente para o mais antigo</span></div><div class="log" style="padding-top:10px">${ADM.historico.map(h=>`<div class="log-row"><time>${brDT(h.em)}</time><span class="av eq">${esc((h.nome||'?')[0])}</span><div class="lg-d"><b>${esc(h.nome)}</b> · ${esc(h.acao)}${h.parte?` · <a href="#" data-open="${h.processo_id}">${esc(h.parte)}</a>`:''}${h.detalhes?`<small>${esc(fmtDet(h.detalhes))}</small>`:''}</div></div>`).join('')}</div>${ADM.historico.length&&ADM.historico.length%100===0?`<div class="card-b"><button class="btn" data-hist-mais="1">Carregar mais</button></div>`:''}</section>`;
+    const H=ADM.historico,F=ADM.hf||{usuario:'',q:''};
+    return `<section class="card"><div class="card-h"><h2>Histórico</h2><span class="sub">quem fez o quê, do mais recente para o mais antigo</span></div>
+    <form id="f-hist" class="filters"><select id="h-quem" class="mseg" style="border:0;padding:8px 10px;font-size:13px" aria-label="Pessoa"><option value="">Todas as pessoas</option>${(ADM.pessoas||[]).map(p=>`<option value="${esc(p.usuario)}" ${F.usuario===p.usuario?'selected':''}>${esc(p.nome)} (${esc(p.usuario)})</option>`).join('')}</select><label class="search">${icon('search')}<input id="h-q" placeholder="Buscar ação, cliente, nº do processo..." value="${esc(F.q)}"></label><button class="btn sm primary">Filtrar</button></form>
+    <div class="log">${H.length?H.map(h=>`<div class="log-row"><time>${brDT(h.em)}</time><span class="av eq">${esc((h.nome||'?')[0])}</span><div class="lg-d"><b>${esc(h.nome)}</b> <span class="muted">(${esc(h.usuario)})</span> · ${esc(h.acao)}${h.parte?` · <a href="#" data-open="${h.processo_id}">${esc(h.parte)}</a>`:''}${h.detalhes?`<small>${esc(fmtDet(h.detalhes))}</small>`:''}${h.ip?`<small>IP ${esc(h.ip)}</small>`:''}</div></div>`).join(''):'<p class="empty" style="padding:16px 20px">Nada encontrado.</p>'}</div>${H.length&&H.length%100===0?`<div class="card-b"><button class="btn" data-hist-mais="1">Carregar mais</button></div>`:''}</section>`;
   }
   if(S.adm==='backups'){
     if(!ADM.backups)return '<div class="loading" style="min-height:160px"><span class="spin"></span></div>';
@@ -424,11 +427,13 @@ function admBody(){
   if(S.adm==='importar')return `<section class="card"><div class="card-h"><h2>Importar planilha</h2></div><div class="card-b"><p class="hint">Envie a planilha Jurídico em .xlsx (no Google Sheets: Arquivo › Fazer download › Microsoft Excel). Entram as abas Cobrança e Processos Diversos, com notas, custas e links do Drive. Um backup é feito antes.</p><form id="f-imp" class="filters" style="padding:14px 0 0"><input type="file" id="imp-arq" accept=".xlsx" required><button class="btn primary">${icon('file-up')}Importar</button></form><div id="imp-res"></div></div></section>`;
   return '';
 }
-function fmtDet(s){try{const d=JSON.parse(s);if(Array.isArray(d))return d.map(x=>x.campo?`${x.campo}: ${x.de??'vazio'} → ${x.para??'vazio'}`:JSON.stringify(x)).join('\n');if(d&&typeof d==='object')return Object.entries(d).filter(([,v])=>v!=null&&v!=='').map(([k,v])=>`${k}: ${Array.isArray(v)?v.join(', '):v}`).join(' · ');return String(d)}catch(e){return s}}
+function histQS(extra){const F=ADM.hf||{};const q=new URLSearchParams();if(F.usuario)q.set('usuario',F.usuario);if(F.q)q.set('q',F.q);if(extra)Object.entries(extra).forEach(([k,v])=>q.set(k,v));const t=q.toString();return t?'?'+t:''}
+const legivel=v=>v===true||v==='true'?'sim':v===false||v==='false'?'não':v==null||v===''?'vazio':(typeof v==='string'&&/^\d{4}-\d{2}-\d{2}/.test(v))?brDT(v.replace('T',' ').slice(0,16)):typeof v==='number'?v.toLocaleString('pt-BR'):v;
+function fmtDet(s){try{const d=JSON.parse(s);if(Array.isArray(d))return d.map(x=>x.campo?`${x.campo}: ${legivel(x.de)} → ${legivel(x.para)}`:JSON.stringify(x)).join('\n');if(d&&typeof d==='object')return Object.entries(d).filter(([,v])=>v!=null&&v!=='').map(([k,v])=>`${k}: ${Array.isArray(v)?v.join(', '):legivel(v)}`).join(' · ');return String(d)}catch(e){return s}}
 async function carregaAdmin(){
   try{
     if(S.adm==='usuarios'&&!ADM.usuarios){ADM.usuarios=(await api('/api/usuarios')).usuarios}
-    else if(S.adm==='historico'&&!ADM.historico){ADM.historico=(await api('/api/historico')).itens}
+    else if(S.adm==='historico'&&!ADM.historico){const r=await api('/api/historico'+histQS());ADM.historico=r.itens;ADM.pessoas=r.pessoas}
     else if(S.adm==='backups'&&!ADM.backups){ADM.backups=(await api('/api/backups')).backups}
     else if(S.adm==='espelho'&&!ADM.espelho){ADM.espelho=await api('/api/espelho')}
     else return;
@@ -492,7 +497,7 @@ document.addEventListener('click',async e=>{
   if(d.reset){if(!confirma(t,'Confirmar: voltar para a padrão?'))return;try{await api(`/api/usuarios/${d.reset}/redefinir`,{method:'POST'});toast('Pronto. No próximo acesso a pessoa entra com a senha padrão e cria outra.');ADM.usuarios=null;closeLayer();carregaAdmin()}catch(er){toast(er.message)}return}
   if(d.espelhoAgora){t.disabled=true;try{const r=await api('/api/espelho',{method:'POST'});toast(`Planilha atualizada com ${r.linhas} processos.`)}catch(er){toast(er.message)}ADM.espelho=null;carregaAdmin();return}
   if(d.backupAgora){t.disabled=true;try{await api('/api/backups',{method:'POST'});toast('Backup feito.');ADM.backups=null;carregaAdmin()}catch(er){toast(er.message)}t.disabled=false;return}
-  if(d.histMais){const mais=(await api('/api/historico?antes='+ADM.historico[ADM.historico.length-1].id)).itens;ADM.historico=ADM.historico.concat(mais);$('#adm').innerHTML=admBody();drawIcons();return}
+  if(d.histMais){const mais=(await api('/api/historico'+histQS({antes:ADM.historico[ADM.historico.length-1].id}))).itens;ADM.historico=ADM.historico.concat(mais);$('#adm').innerHTML=admBody();drawIcons();return}
   if(t.id==='themeBtn'){const n=isDark()?'light':'dark';document.documentElement.dataset.theme=n;try{localStorage.setItem('bj-theme',n)}catch(er){}render();return}
 });
 document.addEventListener('change',e=>{
@@ -521,6 +526,7 @@ document.addEventListener('submit',async e=>{
       await salvar(()=>enviarAnexo(f.dataset.pid,f.dataset.cid,$('#a-cat').value,files,link),'Anexo enviado.');openProc(+f.dataset.pid)}
     if(f.id==='f-user'){const body={id:f.dataset.id||null,nome:$('#u-nome').value,usuario:$('#u-usuario').value,perfil:$('#u-perfil').value,lojas:[...document.querySelectorAll('input[name=u-loja]:checked')].map(x=>x.value),ativo:$('#u-ativo')?$('#u-ativo').checked:true};
       await api('/api/usuarios',{method:'POST',body});toast(body.id?'Usuário salvo.':'Usuário criado. No primeiro acesso ele usa a senha padrão.');ADM.usuarios=null;closeLayer();carregaAdmin()}
+    if(f.id==='f-hist'){ADM.hf={usuario:$('#h-quem').value,q:$('#h-q').value.trim()};ADM.historico=null;$('#adm').innerHTML=admBody();drawIcons();await carregaAdmin()}
     if(f.id==='f-loja'){await salvar(()=>api('/api/lojas',{method:'POST',body:{nome:$('#lj-nome').value,uf:$('#lj-uf').value}}),'Loja adicionada.')}
     if(f.id==='f-imp'){const fd=new FormData();fd.append('arquivo',$('#imp-arq').files[0]);
       let r;try{r=await api('/api/importar',{method:'POST',body:fd})}catch(er){if(er.dados&&er.dados.confirmar&&confirm(er.message+' Continuar mesmo assim?')){fd.append('confirmar','sim');r=await api('/api/importar',{method:'POST',body:fd})}else throw er}

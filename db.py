@@ -141,6 +141,7 @@ historico = Table(
     Column("processo_id", Integer, index=True),
     Column("acao", String(60), nullable=False),
     Column("detalhes", Text, default=""),
+    Column("ip", String(64), default=""),
 )
 
 STATUS = {
@@ -156,13 +157,29 @@ PERFIS = {"admin": "Administrador", "juridico": "Jurídico", "financeiro": "Fina
 
 def criar_tabelas():
     meta.create_all(engine)
+    # colunas novas em tabelas que já existem (create_all não altera tabela existente)
+    from sqlalchemy import inspect
+    cols = {c["name"] for c in inspect(engine).get_columns("historico")}
+    if "ip" not in cols:
+        with engine.begin() as c:
+            c.execute(text("ALTER TABLE historico ADD COLUMN ip VARCHAR(64) DEFAULT ''"))
+
+
+def _ip_atual():
+    try:
+        from flask import has_request_context, request
+        if has_request_context():
+            return (request.headers.get("X-Forwarded-For", request.remote_addr or "").split(",")[0].strip())[:64]
+    except Exception:
+        pass
+    return ""
 
 
 def registrar(conn, quem, acao, processo_id=None, detalhes=None):
     """Grava no histórico. 'quem' é o dicionário do usuário logado."""
     conn.execute(insert(historico).values(
         em=agora(), usuario=(quem or {}).get("usuario", "sistema"), nome=(quem or {}).get("nome", "Sistema"),
-        processo_id=processo_id, acao=acao,
+        processo_id=processo_id, acao=acao, ip=_ip_atual(),
         detalhes=json.dumps(detalhes, ensure_ascii=False, default=str) if isinstance(detalhes, (dict, list)) else (detalhes or ""),
     ))
 
