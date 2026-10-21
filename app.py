@@ -12,6 +12,8 @@ As regras de permissão ficam aqui no servidor (e não só na tela), porque a te
 
 import hmac
 import json
+import re
+import secrets
 import os
 import threading
 import time
@@ -27,8 +29,9 @@ load_dotenv()
 
 import backup  # noqa: E402
 import espelho  # noqa: E402
-from db import (CATEGORIAS_ANEXO, IDENTIFICACOES, PERFIS, STATUS, TIPOS_CUSTA, agora, andamentos, anexos,  # noqa: E402
-                criar_tabelas, custas, engine, garantir_admin, historico, linha, lojas, processos, registrar, usuarios)
+from db import (CATEGORIAS_ANEXO, IDENTIFICACOES, PERFIS, STATUS, TIPOS_AUDIENCIA, TIPOS_CUSTA, agora, andamentos,  # noqa: E402
+                anexos, audiencias, config_gravar, config_ler, criar_tabelas, custas, engine, garantir_admin, historico, linha,
+                lojas, processos, registrar, usuarios)
 from sqlalchemy import and_, func, insert, select, update  # noqa: E402
 
 app = Flask(__name__)
@@ -99,10 +102,11 @@ def pode(acao, u=None):
     u = u or eu()
     p = u["perfil"]
     regras = {
-        "editar_juridico": p in ("admin", "juridico"),     # criar/editar processo, status, andamento, custas
+        "editar_juridico": p in ("admin", "juridico"),     # criar/editar processo, status, andamento, custas, audiências
         "editar_financeiro": p in ("admin", "financeiro"),  # valor pago, conferido, pagar custa
-        "anexar": True,
+        "anexar": p != "leitura",
         "admin": p == "admin",
+        "autorizar": p != "leitura" and bool(u.get("autoriza")),  # autoriza cobranças novas (ex.: Juliana)
     }
     return regras[acao]
 
@@ -125,9 +129,29 @@ def _limite(ip):
     return len(janela) >= 8
 
 
+# Quem entra pelo link de apresentação: só vê, sem login. Não é um usuário do banco.
+VISITANTE = {"id": 0, "usuario": "apresentacao", "nome": "Apresentação (link sem login)", "perfil": "leitura", "lojas": "",
+             "hash": "-", "ativo": True, "v": 0, "autoriza": False}
+
+
+def _token_apresentacao():
+    return config_ler("apresentacao_token", "")
+
+
 def logado(f):
     @wraps(f)
     def w(*a, **k):
+        if session.get("apresentacao"):
+            tok = _token_apresentacao()
+            if tok and hmac.compare_digest(session["apresentacao"], tok):
+                request._eu = dict(VISITANTE)
+                if request.method in ("POST", "DELETE"):
+                    return jsonify(erro="Este é um link só de visualização."), 403
+                return f(*a, **k)
+            session.clear()  # link trocado ou desativado
+            if request.path.startswith("/api/"):
+                return jsonify(erro="Este link de apresentação foi desativado."), 401
+            return redirect(url_for("login"))
         u = _usuario(session.get("uid")) if session.get("uid") else None
         if u and (not u["ativo"] or u["v"] != session.get("v")):
             u = None
@@ -201,6 +225,22 @@ def login():
     return render_template("login.html", erro=erro)
 
 
+@app.route("/ver/<token>")
+def ver_apresentacao(token):
+    """Link de apresentação: entra só para ver, sem usuário e senha."""
+    ip = _ip()
+    tok = _token_apresentacao()
+    if _limite(ip) or not tok or not hmac.compare_digest(token, tok):
+        _tentativas.setdefault(ip, []).append(time.time())
+        return render_template("login.html", erro="Este link de apresentação não existe mais. Peça o link novo ao administrador."), 404
+    session.clear()
+    session.permanent = True
+    session["apresentacao"] = tok
+    with engine.begin() as c:
+        registrar(c, VISITANTE, "Abriu o link de apresentação")
+    return redirect(url_for("index"))
+
+
 @app.route("/senha", methods=["GET", "POST"])
 def trocar_senha():
     u = _usuario(session.get("uid")) if session.get("uid") else None
@@ -237,6 +277,8 @@ def trocar_senha():
 @app.route("/sair")
 def sair():
     session.clear()
+    if request.args.get("de") == "apresentacao":
+        return redirect(url_for("login"))
     return redirect(url_for("login"))
 
 
@@ -250,7 +292,8 @@ def saude():
 def index():
     u = eu()
     return render_template("index.html", me={"id": u["id"], "nome": u["nome"], "usuario": u["usuario"], "perfil": u["perfil"],
-                                              "perfil_nome": PERFIS[u["perfil"]], "lojas": lojas_de(u)},
+                                              "perfil_nome": PERFIS.get(u["perfil"], "Apresentação"), "lojas": lojas_de(u),
+                                              "autoriza": pode("autorizar")},
                            versao=os.environ.get("RAILWAY_GIT_COMMIT_SHA", "dev")[:7])
 
 
@@ -262,10 +305,48 @@ def _processo_visivel(conn, pid):
     f = _filtro_lojas(u)
     if f is not None:
         q = q.where(f)
+    if u["perfil"] == "leitura":  # a apresentação só mostra o que já foi autorizado
+        q = q.where(func.coalesce(processos.c.autorizacao, "") == "")
     r = conn.execute(q).first()
     if not r:
         abort(404)
     return linha(r)
+
+
+def _mascarar(p):
+    """Na apresentação (sem login) não aparecem CPF/CNPJ."""
+    if eu()["perfil"] == "leitura":
+        p["documento"] = ""
+    return p
+
+
+# Audiência escrita no andamento, ex.: "audiência de conciliação para o dia 23/10/2026 às 10:00"
+RX_AUDIENCIA = re.compile(r"(audi[eê]ncia[^.]{0,80}?)(\d{1,2})/(\d{1,2})/(\d{2,4})(?:[^.\d]{0,20}?(\d{1,2})\s*[:h]\s*(\d{2})?)?", re.I)
+
+
+def _sugestoes(conn, ids, hoje):
+    """Audiências futuras citadas nos andamentos que ainda não foram cadastradas nem ignoradas."""
+    ignoradas = set(json.loads(config_ler("sugestoes_ignoradas", "[]") or "[]"))
+    ja = {(r.processo_id, r.data) for r in conn.execute(select(audiencias.c.processo_id, audiencias.c.data).where(audiencias.c.excluido.is_(False)))}
+    out = []
+    for r in conn.execute(select(andamentos.c.id, andamentos.c.processo_id, andamentos.c.texto).where(andamentos.c.texto.ilike("%audi%"))):
+        if r.processo_id not in ids or r.id in ignoradas:
+            continue
+        m = RX_AUDIENCIA.search(r.texto)
+        if not m:
+            continue
+        try:
+            a = int(m.group(4))
+            d = date(a + 2000 if a < 100 else a, int(m.group(3)), int(m.group(2)))
+        except ValueError:
+            continue
+        if d < hoje or (r.processo_id, d) in ja:
+            continue
+        hora = f"{int(m.group(5)):02d}:{m.group(6) or '00'}" if m.group(5) else ""
+        tipo = next((t for t in TIPOS_AUDIENCIA if t.split()[0].lower()[:6] in m.group(1).lower()), "Outra")
+        out.append({"andamento_id": r.id, "processo_id": r.processo_id, "data": d.isoformat(), "hora": hora, "tipo": tipo,
+                    "trecho": r.texto[max(0, m.start() - 40): m.end() + 40]})
+    return out
 
 
 @app.errorhandler(404)
@@ -284,7 +365,9 @@ def api_dados():
         q = select(processos).where(processos.c.excluido.is_(False))
         if f is not None:
             q = q.where(f)
-        ps = [linha(r) for r in c.execute(q.order_by(processos.c.id))]
+        if u["perfil"] == "leitura":
+            q = q.where(func.coalesce(processos.c.autorizacao, "") == "")
+        ps = [_mascarar(linha(r)) for r in c.execute(q.order_by(processos.c.id))]
         ids = {p["id"] for p in ps}
         # último andamento de cada processo
         sub = select(andamentos.c.processo_id, func.max(andamentos.c.id).label("mid")).group_by(andamentos.c.processo_id).subquery()
@@ -296,6 +379,8 @@ def api_dados():
         for r in c.execute(select(anexos.c.custa_id, anexos.c.categoria).where(anexos.c.excluido.is_(False), anexos.c.custa_id.is_not(None))):
             anx_custa.setdefault(r.custa_id, []).append(r.categoria)
         ls = [linha(r) for r in c.execute(select(lojas).order_by(lojas.c.nome))]
+        auds = [linha(r) for r in c.execute(select(audiencias).where(audiencias.c.excluido.is_(False)).order_by(audiencias.c.data, audiencias.c.hora))]
+        sug = _sugestoes(c, ids, agora().date()) if pode("editar_juridico") else []
     for p in ps:
         t = ult.get(p["id"])
         p["andamento"] = t[0] if t else ""
@@ -306,9 +391,10 @@ def api_dados():
         cats = anx_custa.get(x["id"], [])
         x["tem_boleto"] = bool(x["link"]) or "Boleto" in cats
         x["tem_comprovante"] = "Comprovante" in cats
-    return jsonify(processos=ps, custas=cs, lojas=ls, hoje=agora().date().isoformat(),
+    auds = [x for x in auds if x["processo_id"] in ids]
+    return jsonify(processos=ps, custas=cs, audiencias=auds, sugestoes=sug, lojas=ls, hoje=agora().date().isoformat(),
                    listas={"status": STATUS, "identificacoes": IDENTIFICACOES, "tipos_custa": TIPOS_CUSTA,
-                           "categorias": CATEGORIAS_ANEXO, "perfis": PERFIS})
+                           "categorias": CATEGORIAS_ANEXO, "perfis": PERFIS, "tipos_audiencia": TIPOS_AUDIENCIA})
 
 
 @app.route("/api/processos/<int:pid>")
@@ -320,8 +406,12 @@ def api_processo(pid):
         p["custas"] = [linha(r) for r in c.execute(select(custas).where(custas.c.processo_id == pid, custas.c.excluido.is_(False)).order_by(custas.c.vencimento))]
         p["anexos"] = [linha(r) for r in c.execute(select(anexos).where(anexos.c.processo_id == pid, anexos.c.excluido.is_(False)).order_by(anexos.c.em.desc()))]
         p["historico"] = [linha(r) for r in c.execute(select(historico).where(historico.c.processo_id == pid).order_by(historico.c.id.desc()).limit(80))]
+        p["audiencias"] = [linha(r) for r in c.execute(select(audiencias).where(audiencias.c.processo_id == pid, audiencias.c.excluido.is_(False)).order_by(audiencias.c.data, audiencias.c.hora))]
     for a in p["anexos"]:
         a["url"] = a["link"] or f"/anexos/{a['id']}"
+    if eu()["perfil"] == "leitura":  # apresentação: sem anexos, sem histórico e sem CPF/CNPJ
+        p["anexos"], p["historico"] = [], []
+        _mascarar(p)
     return jsonify(p)
 
 
@@ -386,13 +476,50 @@ def api_novo_processo():
     ls = lojas_de(eu())
     if ls and vals.get("loja") not in ls:
         return jsonify(erro="Você só pode cadastrar processos das suas lojas."), 403
+    # Cobrança nova lançada por quem não autoriza fica aguardando a autorização (ex.: da Juliana)
+    precisa = d["tipo"] == "cobranca" and not pode("autorizar")
+    aut = {"autorizacao": "pendente"} if precisa else {"autorizacao": "", "autorizado_por": eu()["nome"], "autorizado_em": agora()}
     with engine.begin() as c:
-        pid = c.execute(insert(processos).values(**vals, conferido=False, excluido=False, criado_em=agora(), atualizado_em=agora(),
+        pid = c.execute(insert(processos).values(**vals, **aut, conferido=False, excluido=False, criado_em=agora(), atualizado_em=agora(),
                                                  criado_por=eu()["nome"])).inserted_primary_key[0]
         if str(d.get("andamento", "")).strip():
             c.execute(insert(andamentos).values(processo_id=pid, texto=str(d["andamento"]).strip(), por=eu()["nome"], em=agora()))
-        registrar(c, eu(), "Processo criado", pid, {"parte": vals.get("parte"), "numero": vals.get("numero")})
-    return jsonify(id=pid)
+        registrar(c, eu(), "Processo criado" + (" (aguardando autorização)" if precisa else ""), pid,
+                  {"parte": vals.get("parte"), "numero": vals.get("numero")})
+    return jsonify(id=pid, pendente=precisa)
+
+
+@app.post("/api/processos/<int:pid>/autorizacao")
+@logado
+def api_autorizacao(pid):
+    """Autorizar ou recusar uma cobrança nova; o jurídico pode reenviar uma recusada."""
+    d = corpo()
+    dec = d.get("decisao")
+    motivo = str(d.get("motivo", "")).strip()[:500]
+    with engine.begin() as c:
+        p = _processo_visivel(c, pid)
+        if dec in ("autorizar", "recusar"):
+            if not pode("autorizar"):
+                return jsonify(erro="Você não tem permissão para autorizar processos."), 403
+            if p["autorizacao"] not in ("pendente", "recusada"):
+                return jsonify(erro="Este processo já está autorizado."), 409
+            if dec == "recusar" and not motivo:
+                return jsonify(erro="Escreva o motivo da recusa."), 400
+            vals = {"autorizacao": "" if dec == "autorizar" else "recusada", "autorizado_por": eu()["nome"], "autorizado_em": agora(),
+                    "motivo_recusa": "" if dec == "autorizar" else motivo}
+            acao = "Processo autorizado" if dec == "autorizar" else "Processo recusado"
+        elif dec == "reenviar":
+            if not pode("editar_juridico"):
+                return jsonify(erro="Seu perfil não pode reenviar processos."), 403
+            if p["autorizacao"] != "recusada":
+                return jsonify(erro="Só processos recusados podem ser reenviados."), 409
+            vals = {"autorizacao": "pendente", "motivo_recusa": ""}
+            acao = "Processo reenviado para autorização"
+        else:
+            return jsonify(erro="Decisão inválida."), 400
+        c.execute(update(processos).where(processos.c.id == pid).values(**vals, atualizado_em=agora()))
+        registrar(c, eu(), acao, pid, {"motivo": motivo} if motivo else None)
+    return jsonify(ok=True)
 
 
 @app.post("/api/processos/<int:pid>")
@@ -541,10 +668,95 @@ def api_excluir_custa(cid):
     return jsonify(ok=True)
 
 
+# ---------- audiências ----------
+
+def _audiencia_dados(d):
+    try:
+        dia = _data(d.get("data"))
+    except ValueError as e:
+        raise ValueError(str(e))
+    if not dia:
+        raise ValueError("Informe a data da audiência.")
+    hora = str(d.get("hora", "")).strip()[:5]
+    if hora and not re.match(r"^\d{2}:\d{2}$", hora):
+        raise ValueError("Hora inválida (use 09:30).")
+    return {"data": dia, "hora": hora, "tipo": d.get("tipo") if d.get("tipo") in TIPOS_AUDIENCIA else "Outra",
+            "local": str(d.get("local", "")).strip()[:500], "obs": str(d.get("obs", "")).strip()[:1000]}
+
+
+@app.post("/api/processos/<int:pid>/audiencias")
+@logado
+@so("editar_juridico")
+def api_nova_audiencia(pid):
+    d = corpo()
+    try:
+        vals = _audiencia_dados(d)
+    except ValueError as e:
+        return jsonify(erro=str(e)), 400
+    with engine.begin() as c:
+        _processo_visivel(c, pid)
+        aid = c.execute(insert(audiencias).values(processo_id=pid, **vals, andamento_id=d.get("andamento_id") or None,
+                                                  criado_por=eu()["nome"], criado_em=agora(), excluido=False)).inserted_primary_key[0]
+        registrar(c, eu(), "Audiência marcada", pid, {"tipo": vals["tipo"], "data": vals["data"], "hora": vals["hora"]})
+    return jsonify(id=aid)
+
+
+def _audiencia(conn, aid):
+    r = conn.execute(select(audiencias).where(audiencias.c.id == aid, audiencias.c.excluido.is_(False))).first()
+    if not r:
+        abort(404)
+    a = linha(r)
+    _processo_visivel(conn, a["processo_id"])
+    return a
+
+
+@app.post("/api/audiencias/<int:aid>")
+@logado
+@so("editar_juridico")
+def api_editar_audiencia(aid):
+    try:
+        vals = _audiencia_dados(corpo())
+    except ValueError as e:
+        return jsonify(erro=str(e)), 400
+    with engine.begin() as c:
+        a = _audiencia(c, aid)
+        mud = {k: v for k, v in vals.items() if not _igual(a.get(k), v.isoformat() if k == "data" else v)}
+        if mud:
+            c.execute(update(audiencias).where(audiencias.c.id == aid).values(**mud))
+            registrar(c, eu(), "Audiência alterada", a["processo_id"], [{"campo": k, "de": a.get(k), "para": v} for k, v in mud.items()])
+    return jsonify(ok=True)
+
+
+@app.delete("/api/audiencias/<int:aid>")
+@logado
+@so("editar_juridico")
+def api_excluir_audiencia(aid):
+    with engine.begin() as c:
+        a = _audiencia(c, aid)
+        c.execute(update(audiencias).where(audiencias.c.id == aid).values(excluido=True))
+        registrar(c, eu(), "Audiência excluída", a["processo_id"], {"tipo": a["tipo"], "data": a["data"], "hora": a["hora"]})
+    return jsonify(ok=True)
+
+
+@app.post("/api/sugestoes/<int:andamento_id>/ignorar")
+@logado
+@so("editar_juridico")
+def api_ignorar_sugestao(andamento_id):
+    with engine.begin() as c:
+        lista = json.loads(config_ler("sugestoes_ignoradas", "[]") or "[]")
+        if andamento_id not in lista:
+            lista.append(andamento_id)
+        config_gravar(c, "sugestoes_ignoradas", json.dumps(lista[-2000:]))
+        r = c.execute(select(andamentos.c.processo_id).where(andamentos.c.id == andamento_id)).first()
+        registrar(c, eu(), "Sugestão de audiência ignorada", r.processo_id if r else None)
+    return jsonify(ok=True)
+
+
 # ---------- anexos ----------
 
 @app.post("/api/processos/<int:pid>/anexos")
 @logado
+@so("anexar")
 def api_anexar(pid):
     arqs = [a for a in request.files.getlist("arquivo") if a and a.filename]
     link = request.form.get("link", "").strip()
@@ -598,6 +810,8 @@ def api_excluir_anexo(aid):
 @app.route("/anexos/<int:aid>")
 @logado
 def baixar_anexo(aid):
+    if not pode("anexar"):
+        abort(403)
     with engine.connect() as c:
         r = c.execute(select(anexos).where(anexos.c.id == aid)).first()
         if not r:
@@ -644,7 +858,7 @@ def api_salvar_usuario():
             atual = linha(atual)
             if atual["id"] == eu()["id"] and (perfil != "admin" or not d.get("ativo", True)):
                 return jsonify(erro="Você não pode tirar o seu próprio acesso de administrador."), 400
-            vals = {"nome": nome, "perfil": perfil, "lojas": "|".join(ls), "ativo": bool(d.get("ativo", True))}
+            vals = {"nome": nome, "perfil": perfil, "lojas": "|".join(ls), "ativo": bool(d.get("ativo", True)), "autoriza": bool(d.get("autoriza"))}
             c.execute(update(usuarios).where(usuarios.c.id == atual["id"]).values(**vals))
             registrar(c, eu(), "Usuário alterado", detalhes={"usuario": atual["usuario"], **vals})
             return jsonify(ok=True)
@@ -654,8 +868,9 @@ def api_salvar_usuario():
             return jsonify(erro="Esse usuário já existe."), 400
         if not SENHA_PADRAO:
             return jsonify(erro="Defina a SENHA_PADRAO no Railway antes de criar usuários."), 400
-        c.execute(insert(usuarios).values(usuario=usuario, nome=nome, perfil=perfil, lojas="|".join(ls), hash=None, v=1, ativo=True, criado_em=agora()))
-        registrar(c, eu(), "Usuário criado", detalhes={"usuario": usuario, "perfil": perfil, "lojas": ls})
+        c.execute(insert(usuarios).values(usuario=usuario, nome=nome, perfil=perfil, lojas="|".join(ls), hash=None, v=1, ativo=True,
+                                          criado_em=agora(), autoriza=bool(d.get("autoriza"))))
+        registrar(c, eu(), "Usuário criado", detalhes={"usuario": usuario, "perfil": perfil, "lojas": ls, "autoriza": bool(d.get("autoriza"))})
     return jsonify(ok=True)
 
 
@@ -672,6 +887,28 @@ def api_redefinir(uid):
         c.execute(update(usuarios).where(usuarios.c.id == uid).values(hash=None, v=(r.v or 0) + 1))
         registrar(c, eu(), "Senha voltou para a padrão", detalhes={"usuario": r.usuario})
     return jsonify(ok=True)
+
+
+@app.route("/api/apresentacao")
+@logado
+@so("admin")
+def api_apresentacao():
+    tok = _token_apresentacao()
+    return jsonify(ativo=bool(tok), url=(request.host_url.rstrip("/") + url_for("ver_apresentacao", token=tok)) if tok else "")
+
+
+@app.post("/api/apresentacao")
+@logado
+@so("admin")
+def api_apresentacao_mudar():
+    acao = corpo().get("acao")
+    if acao not in ("gerar", "desativar"):
+        return jsonify(erro="Ação inválida."), 400
+    tok = secrets.token_urlsafe(24) if acao == "gerar" else ""
+    with engine.begin() as c:
+        config_gravar(c, "apresentacao_token", tok)
+        registrar(c, eu(), "Link de apresentação gerado (o anterior parou de funcionar)" if acao == "gerar" else "Link de apresentação desativado")
+    return api_apresentacao()
 
 
 @app.post("/api/lojas")

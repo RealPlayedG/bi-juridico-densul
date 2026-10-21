@@ -55,6 +55,7 @@ usuarios = Table(
     Column("v", Integer, default=0),                        # muda a cada troca/reset de senha (derruba sessões antigas)
     Column("ativo", Boolean, default=True),
     Column("criado_em", DateTime, default=agora),
+    Column("autoriza", Boolean, default=False),             # pode autorizar cobranças novas lançadas pelo jurídico
 )
 
 lojas = Table(
@@ -90,6 +91,11 @@ processos = Table(
     Column("criado_por", String(120), default=""),
     Column("atualizado_em", DateTime, default=agora),
     Column("excluido", Boolean, default=False),
+    # autorização de cobrança nova: "" = autorizada (ou anterior à regra), "pendente", "recusada"
+    Column("autorizacao", String(12), default=""),
+    Column("autorizado_por", String(120), default=""),
+    Column("autorizado_em", DateTime),
+    Column("motivo_recusa", Text, default=""),
 )
 
 andamentos = Table(
@@ -132,6 +138,27 @@ anexos = Table(
     Column("excluido", Boolean, default=False),
 )
 
+audiencias = Table(
+    "audiencias", meta,
+    Column("id", Integer, primary_key=True),
+    Column("processo_id", Integer, ForeignKey("processos.id"), nullable=False, index=True),
+    Column("data", Date, nullable=False),
+    Column("hora", String(5), default=""),
+    Column("tipo", String(60), default="Conciliação"),
+    Column("local", Text, default=""),                      # endereço ou link da audiência online
+    Column("obs", Text, default=""),
+    Column("andamento_id", Integer),                        # quando veio de uma sugestão tirada do andamento
+    Column("criado_por", String(120), default=""),
+    Column("criado_em", DateTime, default=agora),
+    Column("excluido", Boolean, default=False),
+)
+
+config = Table(
+    "config", meta,
+    Column("chave", String(60), primary_key=True),
+    Column("valor", Text, default=""),
+)
+
 historico = Table(
     "historico", meta,
     Column("id", Integer, primary_key=True),
@@ -151,18 +178,41 @@ STATUS = {
 }
 IDENTIFICACOES = ["Densul", "Sparcould", "Diretoria"]
 TIPOS_CUSTA = ["Inicial", "Serviço", "Cartório", "Complementar", "Outra"]
+TIPOS_AUDIENCIA = ["Conciliação", "Instrução e julgamento", "Una", "Mediação", "Outra"]
 CATEGORIAS_ANEXO = ["Nota", "Boleto", "Comprovante", "Documento"]
 PERFIS = {"admin": "Administrador", "juridico": "Jurídico", "financeiro": "Financeiro"}
+COLUNAS_NOVAS = [  # (tabela, coluna, tipo SQL): criadas sozinhas na subida, em bancos que já existiam
+    ("historico", "ip", "VARCHAR(64) DEFAULT ''"),
+    ("usuarios", "autoriza", "BOOLEAN DEFAULT FALSE"),
+    ("processos", "autorizacao", "VARCHAR(12) DEFAULT ''"),
+    ("processos", "autorizado_por", "VARCHAR(120) DEFAULT ''"),
+    ("processos", "autorizado_em", "TIMESTAMP"),
+    ("processos", "motivo_recusa", "TEXT DEFAULT ''"),
+]
 
 
 def criar_tabelas():
     meta.create_all(engine)
     # colunas novas em tabelas que já existem (create_all não altera tabela existente)
     from sqlalchemy import inspect
-    cols = {c["name"] for c in inspect(engine).get_columns("historico")}
-    if "ip" not in cols:
-        with engine.begin() as c:
-            c.execute(text("ALTER TABLE historico ADD COLUMN ip VARCHAR(64) DEFAULT ''"))
+    insp = inspect(engine)
+    for tabela, coluna, tipo in COLUNAS_NOVAS:
+        if coluna not in {c["name"] for c in insp.get_columns(tabela)}:
+            with engine.begin() as c:
+                c.execute(text(f"ALTER TABLE {tabela} ADD COLUMN {coluna} {tipo}"))
+
+
+def config_ler(chave, padrao=""):
+    with engine.connect() as c:
+        r = c.execute(select(config.c.valor).where(config.c.chave == chave)).first()
+    return r[0] if r else padrao
+
+
+def config_gravar(conn, chave, valor):
+    if conn.execute(select(config.c.chave).where(config.c.chave == chave)).first():
+        conn.execute(update(config).where(config.c.chave == chave).values(valor=valor))
+    else:
+        conn.execute(insert(config).values(chave=chave, valor=valor))
 
 
 def _ip_atual():

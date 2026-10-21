@@ -40,6 +40,28 @@ o histórico só dele. Para isso funcionar, **cada pessoa precisa ter o próprio
 - Esqueceu a senha: o administrador abre o usuário e clica em "Voltar senha para a padrão".
 - Se o próprio administrador esquecer: no Railway, crie a variável `RESETAR_SENHA=admin`. Ao reiniciar, a senha volta para a padrão (uma única vez). Para outro reset no futuro, mude o valor (ex.: `admin#2`).
 
+## Autorização de cobranças novas
+
+- No cadastro do usuário, a marcação **"Autoriza cobranças novas lançadas pelo jurídico"** define quem autoriza (ex.: Juliana).
+- Cobrança nova lançada por quem não tem essa marcação entra como **Aguardando autorização**: aparece na lista com o aviso,
+  mas não soma nos totais, gráficos, link de apresentação nem na planilha espelho.
+- Quem autoriza vê o aviso no sino e no Início, e dentro do processo clica em **Autorizar** ou **Recusar** (com motivo).
+  O jurídico pode corrigir e **reenviar** uma recusada. Tudo fica no histórico.
+
+## Link de apresentação (sem login)
+
+- Administração > Usuários > **Link de apresentação**: gera um link secreto para quem só vai ver o BI.
+- Quem abre não edita nada, não vê CPF/CNPJ nem anexos, e não vê cobranças aguardando autorização.
+- "Gerar link novo" faz o link anterior parar de funcionar na hora; "Desativar link" desliga. Cada abertura fica no histórico.
+
+## Audiências
+
+- Dentro do processo: **Nova audiência** (data, hora, tipo, local ou link, observação). Só o jurídico e o administrador marcam.
+- Aparecem na **Agenda** (lista e calendário, em roxo), no card "Próximos dias" do Início, e geram aviso no sino e no Início
+  quando faltam 3 dias ou menos.
+- A Agenda mostra **Audiências encontradas nos andamentos** (ex.: "audiência de conciliação para o dia 23/10/2026 às 10:00")
+  para o jurídico adicionar com um clique ou ignorar. Nada entra sozinho.
+
 ## Custas e avisos
 
 - O jurídico lança a custa dentro do processo (tipo, vencimento, valor, boleto).

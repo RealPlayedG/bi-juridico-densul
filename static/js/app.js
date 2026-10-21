@@ -18,9 +18,10 @@ const WD=['dom','seg','ter','qua','qui','sex','sáb'];
 
 const ME=window.ME||{};
 const isAdmin=ME.perfil==='admin', canJ=ME.perfil==='admin'||ME.perfil==='juridico', canF=ME.perfil==='admin'||ME.perfil==='financeiro';
+const isLeitura=ME.perfil==='leitura', canAutorizar=!!ME.autoriza;
 
 /* ================= Dados ================= */
-let P=[],C=[],LOJAS=[],LISTAS={status:{},tipos_custa:[],categorias:[],identificacoes:[],perfis:{}},HOJE='';
+let P=[],C=[],AUD=[],SUG=[],LOJAS=[],LISTAS={status:{},tipos_custa:[],categorias:[],identificacoes:[],perfis:{}},HOJE='';
 let LOADED=false,SYNC={at:null,err:null,busy:false};
 const _t=new Date();
 const S={g:{st:'rosca',lj:'barras',dv:'barras'},page:'painel',loja:'',q:'',st:'todos',cv:'lista',cf:'atencao',cy:_t.getFullYear(),cm:_t.getMonth(),sel:'',bell:false,ord:'padrao',adm:'usuarios'};
@@ -39,7 +40,7 @@ async function api(path,opts={}){
 }
 async function refresh(silent){
   if(SYNC.busy)return;SYNC.busy=true;
-  try{const d=await api('/api/dados');P=d.processos;C=d.custas;LOJAS=d.lojas;LISTAS=d.listas;HOJE=d.hoje;if(!S.sel)S.sel=HOJE;LOADED=true;SYNC.at=new Date();SYNC.err=null}
+  try{const d=await api('/api/dados');P=d.processos;C=d.custas;AUD=d.audiencias||[];SUG=d.sugestoes||[];LOJAS=d.lojas;LISTAS=d.listas;HOJE=d.hoje;if(!S.sel)S.sel=HOJE;LOADED=true;SYNC.at=new Date();SYNC.err=null}
   catch(e){SYNC.err=e.message;if(!silent)toast(e.message)}
   SYNC.busy=false;
   if(document.activeElement&&['q'].includes(document.activeElement.id)){renderShell();drawIcons()}else render();
@@ -54,6 +55,14 @@ const PM=Object.create(null);
 const proc=id=>PM[id]||(PM[id]=P.find(p=>p.id===id));
 const vis=p=>!S.loja||p.loja===S.loja;
 const ativos=()=>P.filter(vis);
+const autorizado=p=>!p.autorizacao;               // pendente/recusada não entram nos totais
+const validos=()=>ativos().filter(autorizado);
+const pendAut=()=>canAutorizar?P.filter(p=>p.autorizacao==='pendente'&&vis(p)):[];
+const audVis=()=>{PMreset();return AUD.filter(a=>{const p=proc(a.processo_id);return p&&vis(p)})};
+const audHora=a=>a.hora?' às '+a.hora:'';
+const audFut=()=>audVis().filter(a=>a.data>=HOJE).sort((x,y)=>(x.data+x.hora).localeCompare(y.data+y.hora));
+const audProx=()=>audFut().filter(a=>a.data<=addDays(HOJE,3));
+const autPill=p=>p.autorizacao==='pendente'?'<span class="cu proxima">Aguardando autorização</span>':p.autorizacao==='recusada'?'<span class="cu vencida">Recusada</span>':'';
 function custaSt(c){
   if(c.pago)return 'paga';
   if(!c.vencimento)return 'semdata';
@@ -74,28 +83,37 @@ const parteNome=p=>p.parte||'(sem nome)';
 const TIPO_NOME={cobranca:'Cobrança',diversos:'Processos diversos'};
 
 /* ================= Casca ================= */
-const PAGES=[['painel','layout-dashboard','Início'],['cobranca','hand-coins','Cobrança'],['diversos','scale','Diversos'],['custas','calendar-clock','Custas']];
+const PAGES=[['painel','layout-dashboard','Início'],['cobranca','hand-coins','Cobrança'],['diversos','scale','Diversos'],['custas','calendar-clock','Agenda']];
 const isDark=()=>{const t=document.documentElement.dataset.theme;return t?t==='dark':matchMedia('(prefers-color-scheme: dark)').matches};
 const READ_KEY='bj-lidos-'+ME.id;let READ=new Set();
 try{READ=new Set(JSON.parse(localStorage.getItem(READ_KEY)||'[]'))}catch(e){}
 function saveRead(){try{localStorage.setItem(READ_KEY,JSON.stringify([...READ].slice(-400)))}catch(e){}}
 
 function renderShell(){
-  const at=LOADED?atencao().length:0;
+  const at=LOADED?atencao().length+audProx().length:0;
   $('#nav').innerHTML=PAGES.map(([k,ic,t])=>`<button class="${S.page===k?'active':''}" data-page="${k}">${icon(ic)}${t}${k==='custas'&&at?`<span class="badge">${at}</span>`:''}</button>`).join('')
     +(isAdmin?`<button class="nav-extra ${S.page==='admin'?'active':''}" data-page="admin">${icon('shield')}Administração</button>`:'');
   const minhas=ME.lojas&&ME.lojas.length?LOJAS.filter(l=>ME.lojas.includes(l.nome)):LOJAS;
   $('#lojaSel').innerHTML=`${icon('store')}<select id="loja" aria-label="Loja"><option value="">${ME.lojas&&ME.lojas.length?'Minhas lojas':'Todas as lojas'}</option>${minhas.map(l=>`<option ${S.loja===l.nome?'selected':''}>${esc(l.nome)}</option>`).join('')}</select>`;
-  $('#profile').innerHTML=`<span class="me"><span class="av ${ME.perfil==='financeiro'?'sec':ME.perfil==='admin'?'eq':'dono'}">${esc((ME.nome||'?')[0])}</span><span class="me-t"><b>${esc(ME.nome)}</b><small>${esc(ME.perfil_nome)}</small></span></span><a class="iconbtn sm" href="/senha" title="Trocar senha" aria-label="Trocar senha">${icon('key-round')}</a><a class="iconbtn sm" href="/sair" title="Sair" aria-label="Sair">${icon('log-out')}</a>`;
+  if(isLeitura){$('#profile').innerHTML=`<span class="me"><span class="av dono">${icon('eye')}</span><span class="me-t"><b>Modo apresentação</b><small>Só visualização</small></span></span><a class="iconbtn sm" href="/sair?de=apresentacao" title="Sair" aria-label="Sair">${icon('log-out')}</a>`}
+  else $('#profile').innerHTML=`<span class="me"><span class="av ${ME.perfil==='financeiro'?'sec':ME.perfil==='admin'?'eq':'dono'}">${esc((ME.nome||'?')[0])}</span><span class="me-t"><b>${esc(ME.nome)}</b><small>${esc(ME.perfil_nome)}</small></span></span><a class="iconbtn sm" href="/senha" title="Trocar senha" aria-label="Trocar senha">${icon('key-round')}</a><a class="iconbtn sm" href="/sair" title="Sair" aria-label="Sair">${icon('log-out')}</a>`;
   $('#sync').innerHTML=SYNC.err?`<span class="sync err" title="${esc(SYNC.err)}">${icon('cloud-off')}<span>Sem conexão</span></span>`:`<button class="sync" data-refresh="1" title="Atualizar agora">${icon(SYNC.busy?'loader':'cloud')}<span>${SYNC.at?'Atualizado às '+pad(SYNC.at.getHours())+':'+pad(SYNC.at.getMinutes()):'Conectando'}</span></button>`;
   $('#themeBtn').innerHTML=icon(isDark()?'sun':'moon');
   renderBell();
 }
+function avisos(){
+  if(!LOADED)return [];
+  const out=[];
+  pendAut().forEach(p=>out.push({k:`p${p.id}`,tipo:'pend',ic:'shield-check',cls:'rem',t:`Cobrança aguardando sua autorização`,sub:`${parteNome(p)} · ${p.loja||'sem loja'}`,pid:p.id,ord:'0'}));
+  audProx().forEach(a=>{const p=proc(a.processo_id);out.push({k:`a${a.id}-${a.data}-${a.hora}`,tipo:'aud',ic:'gavel',cls:a.data===HOJE?'late':'rem',t:`Audiência ${a.tipo.toLowerCase()} ${quando(a.data)}${audHora(a)}`,sub:`${parteNome(p)} · ${p.loja||'sem loja'}`,pid:p.id,ord:'1'+a.data+a.hora})});
+  atencao().forEach(c=>{const p=proc(c.processo_id),st=custaSt(c);out.push({k:`c${c.id}-${c.vencimento}`,tipo:'cus',ic:st==='proxima'?'calendar-clock':'alert-triangle',cls:st==='proxima'?'rem':'late',t:`Custa ${c.tipo.toLowerCase()} ${st==='vencida'?'vencida em '+brDate(c.vencimento):'vence '+quando(c.vencimento)}${c.valor?' · '+fmt(c.valor):''}`,sub:`${parteNome(p)} · ${p.loja||'sem loja'}`,pid:p.id,ord:'2'+c.vencimento})});
+  return out;
+}
 function renderBell(){
-  const list=LOADED?atencao():[];const unread=list.filter(c=>!READ.has(`c${c.id}-${c.vencimento}`)).length;
+  const list=avisos(),unread=list.filter(n=>!READ.has(n.k)).length;
   $('#bell').innerHTML=`<button class="iconbtn" data-bell="1" aria-label="Avisos">${icon('bell')}</button>${unread?`<span class="cnt">${unread}</span>`:''}
-  ${S.bell?`<div class="np" role="dialog" aria-label="Avisos"><div class="np-h"><b>Custas para pagar</b><span class="np-acts">${unread?'<button data-readall="1">Marcar como vistos</button>':''}</span></div>
-  <div class="np-list">${list.length?list.map(c=>{const p=proc(c.processo_id),s=custaSt(c),k=`c${c.id}-${c.vencimento}`;return `<button class="np-item ${READ.has(k)?'':'unread'}" data-notif="${c.id}"><span class="np-ic ${s==='proxima'?'rem':'late'}">${icon(s==='proxima'?'calendar-clock':'alert-triangle')}</span><span style="flex:1;min-width:0"><span class="np-t">Custa ${esc(c.tipo.toLowerCase())} ${s==='vencida'?'vencida em '+brDate(c.vencimento):'vence '+quando(c.vencimento)}${c.valor?' · '+fmt(c.valor):''}</span><small>${esc(parteNome(p))} · ${esc(p.loja||'sem loja')}</small></span></button>`}).join(''):'<div class="np-empty">Nenhuma custa vencendo. Tudo em dia.</div>'}</div></div>`:''}`;
+  ${S.bell?`<div class="np" role="dialog" aria-label="Avisos"><div class="np-h"><b>Avisos</b><span class="np-acts">${unread?'<button data-readall="1">Marcar como vistos</button>':''}</span></div>
+  <div class="np-list">${list.length?list.map(n=>`<button class="np-item ${READ.has(n.k)?'':'unread'}" data-notif="${esc(n.k)}" data-pid="${n.pid}"><span class="np-ic ${n.cls}">${icon(n.ic)}</span><span style="flex:1;min-width:0"><span class="np-t">${esc(n.t)}</span><small>${esc(n.sub)}</small></span></button>`).join(''):'<div class="np-empty">Nenhum aviso. Tudo em dia.</div>'}</div></div>`:''}`;
 }
 let CH=[];
 function render(){
@@ -114,7 +132,7 @@ const soma=(arr,f)=>arr.reduce((a,x)=>a+(Number(x[f])||0),0);
 
 /* ================= Início ================= */
 function painel(){
-  const ps=ativos(),cob=ps.filter(p=>p.tipo==='cobranca'),div=ps.filter(p=>p.tipo==='diversos');
+  const ps=validos(),cob=ps.filter(p=>p.tipo==='cobranca'),div=ps.filter(p=>p.tipo==='diversos');
   const enc=s=>['Não entrar com ação','Finalizado'].includes(s);
   const cobAt=cob.filter(p=>!enc(p.status));
   const acordos=cob.filter(p=>p.valor_acordo);
@@ -122,6 +140,10 @@ function painel(){
   const cv=custasVis(),abertas=cv.filter(c=>!c.pago),venc=abertas.filter(c=>c.vencimento&&c.vencimento<HOJE);
   const at=atencao();
   let h=`<div class="ph"><div><h1>${S.loja?esc(S.loja):'Visão geral'}</h1><p>${cob.length} cobranças e ${div.length} processos diversos</p></div><div class="ph-actions">${canJ?`<button class="btn primary" data-act="novo">${icon('plus')}Novo processo</button>`:''}</div></div>`;
+  const pa=pendAut();
+  if(pa.length)h+=`<button class="strip warn" data-goaut="1">${icon('shield-check')}<span><b>${pa.length} ${pa.length===1?'cobrança aguardando':'cobranças aguardando'} sua autorização</b><small>Lançada${pa.length>1?'s':''} pelo jurídico e ainda fora dos totais</small></span><em>Ver${icon('chevron-right')}</em></button>`;
+  const ap=audProx();
+  if(ap.length){const a=ap[0],pp=proc(a.processo_id);h+=`<button class="strip aud" data-page="custas" data-cfgo="aud">${icon('gavel')}<span><b>${ap.length} ${ap.length===1?'audiência':'audiências'} nos próximos 3 dias</b><small>Próxima: ${esc(parteNome(pp))}, ${quando(a.data)}${audHora(a)}</small></span><em>Ver agenda${icon('chevron-right')}</em></button>`}
   if(at.length){const nv=at.filter(c=>['vencida','hoje'].includes(custaSt(c))).length,nl=at.length-nv;
     h+=`<button class="strip ${nv?'neg':'warn'}" data-page="custas" data-cfgo="atencao">${icon(nv?'alert-triangle':'calendar-clock')}<span><b>${nv?`${nv} ${nv===1?'custa vencida':'custas vencidas'}`:''}${nv&&nl?' e ':''}${nl?`${nl} vencendo nos próximos 3 dias`:''}</b><small>Mais antiga: ${esc(parteNome(proc(at[0].processo_id)))}, ${brDate(at[0].vencimento)}</small></span><em>Ver custas${icon('chevron-right')}</em></button>`}
   h+=`<div class="kpis kpis5">
@@ -147,7 +169,7 @@ function painel(){
     ${cardGraf('lj','Cobrança por loja',`${rLj.length} lojas, maiores valores`,rLj,{centro:'Todas as lojas',outros:n=>`Outras ${n} lojas`,aria:'Valor em cobrança por loja'})}
   </div>
   <div class="g2 g2-eq">
-    <section class="card"><div class="card-h"><h2>Próximas custas</h2><button class="link" data-page="custas">Calendário</button></div><div class="card-b">${proxCustas()}</div></section>
+    <section class="card"><div class="card-h"><h2>Próximos dias</h2><span class="sub">custas e audiências</span><button class="link" data-page="custas">Agenda</button></div><div class="card-b">${proxCustas()}</div></section>
     ${div.length?cardGraf('dv','Processos diversos',`${div.length} processos`,rDv,{centro:'Processos',cont:true,maxBar:7,outros:n=>`Outros ${n} tipos`,aria:'Processos diversos por tipo de ação'}):`<section class="card"><div class="card-h"><h2>Processos diversos</h2></div><div class="card-b"><p class="empty">Nenhum processo diverso.</p></div></section>`}
   </div>`;
   return h;
@@ -177,16 +199,23 @@ function cardGraf(key,titulo,sub,rows,o){
   return `<section class="card" id="card-${key}"><div class="card-h"><h2>${titulo}</h2><span class="sub">${sub}</span>${tools}</div><div class="card-b">${corpo}</div></section>`;
 }
 function corStatus(k){const ord=LISTAS.status.cobranca||[];const i=ord.indexOf(k);return i<0?cssv('--s0'):cssv('--s'+(i%7+1))}
-function porLoja(){const m={};ativos().filter(p=>p.tipo==='cobranca').forEach(p=>{const k=p.loja||'Sem loja';m[k]=(m[k]||0)+(Number(p.valor)||0)});return Object.entries(m).sort((a,b)=>b[1]-a[1])}
-function porStatus(){const m={};ativos().filter(p=>p.tipo==='cobranca').forEach(p=>{const k=p.status||'Sem status';m[k]=(m[k]||0)+(Number(p.valor)||0)});const ord=[...(LISTAS.status.cobranca||[]),'Sem status'];return Object.entries(m).sort((a,b)=>ord.indexOf(a[0])-ord.indexOf(b[0]))}
+function porLoja(){const m={};validos().filter(p=>p.tipo==='cobranca').forEach(p=>{const k=p.loja||'Sem loja';m[k]=(m[k]||0)+(Number(p.valor)||0)});return Object.entries(m).sort((a,b)=>b[1]-a[1])}
+function porStatus(){const m={};validos().filter(p=>p.tipo==='cobranca').forEach(p=>{const k=p.status||'Sem status';m[k]=(m[k]||0)+(Number(p.valor)||0)});const ord=[...(LISTAS.status.cobranca||[]),'Sem status'];return Object.entries(m).sort((a,b)=>ord.indexOf(a[0])-ord.indexOf(b[0]))}
 function proxCustas(){
-  const l=custasVis().filter(c=>!c.pago&&c.vencimento&&c.vencimento>=HOJE).slice(0,6);
-  return l.length?`<div class="ulist">${l.map(c=>cRow(c,true)).join('')}</div>`:'<p class="empty">Nenhuma custa a vencer.</p>';
+  const l=[...custasVis().filter(c=>!c.pago&&c.vencimento&&c.vencimento>=HOJE).map(c=>({d:c.vencimento+'9',h:cRow(c,true)})),
+           ...audFut().map(a=>({d:a.data+(a.hora||'0'),h:aRow(a,true)}))].sort((x,y)=>x.d.localeCompare(y.d)).slice(0,7);
+  return l.length?`<div class="ulist">${l.map(x=>x.h).join('')}</div>`:'<p class="empty">Nada marcado para os próximos dias.</p>';
+}
+function aRow(a,compacto){
+  const p=proc(a.processo_id),d=dParts(a.data),hoje=a.data===HOJE;
+  const pill=`<span class="cu ${hoje?'hoje':a.data<=addDays(HOJE,3)?'proxima':'aud'}">${hoje?'Hoje':'Audiência '+quando(a.data)}${audHora(a)}</span>`;
+  if(compacto)return `<div class="urow clickable is-aud" data-open="${p.id}"><div class="datebox">${`<b>${d.d}</b><small>${MES3[d.m]}</small>`}</div><div class="t"><b>${esc(parteNome(p))}</b><small>Audiência de ${esc(a.tipo.toLowerCase())} · ${esc(p.loja||'sem loja')} ${pill}</small></div><div class="v num">${a.hora||''}</div></div>`;
+  return `<div class="crow is-aud"><div class="datebox"><b>${d.d}</b><small>${MES3[d.m]}</small></div><div class="t" data-open="${p.id}"><b>${esc(parteNome(p))}</b><small>Audiência de ${esc(a.tipo.toLowerCase())}${a.local?' · '+esc(a.local):''} · ${esc(p.loja||'sem loja')} ${pill}</small></div><div class="v num">${a.hora||''}</div><div class="acts"><button class="btn sm" data-open="${p.id}">${icon('folder-open')}Abrir processo</button></div></div>`;
 }
 function cRow(c,compacto){
   const p=proc(c.processo_id),d=c.vencimento?dParts(c.vencimento):null;
   if(compacto)return `<div class="urow clickable" data-open="${p.id}"><div class="datebox">${d?`<b>${d.d}</b><small>${MES3[d.m]}</small>`:'<b>–</b>'}</div><div class="t"><b>${esc(parteNome(p))}</b><small>${esc(c.tipo)} · ${esc(p.loja||'sem loja')} ${cuPill(c)}</small></div><div class="v num">${c.valor?fmt(c.valor):''}</div></div>`;
-  return `<div class="crow"><div class="datebox">${d?`<b>${d.d}</b><small>${MES3[d.m]}</small>`:'<b>–</b>'}</div><div class="t" data-open="${p.id}"><b>${esc(parteNome(p))}</b><small>Custa ${esc(c.tipo.toLowerCase())}${c.descricao?' · '+esc(c.descricao):''} · ${esc(p.loja||'sem loja')} ${cuPill(c)}</small></div><div class="v num">${c.valor?fmt(c.valor):'<span class="muted">sem valor</span>'}</div><div class="acts">${c.link?`<a class="btn sm" href="${esc(c.link)}" target="_blank" rel="noopener" title="Abrir boleto">${icon('file-text')}Boleto</a>`:''}${canF&&!c.pago?`<button class="btn sm primary" data-pagar="${c.id}">${icon('check')}Paga</button>`:''}</div></div>`;
+  return `<div class="crow"><div class="datebox">${d?`<b>${d.d}</b><small>${MES3[d.m]}</small>`:'<b>–</b>'}</div><div class="t" data-open="${p.id}"><b>${esc(parteNome(p))}</b><small>Custa ${esc(c.tipo.toLowerCase())}${c.descricao?' · '+esc(c.descricao):''} · ${esc(p.loja||'sem loja')} ${cuPill(c)}</small></div><div class="v num">${c.valor?fmt(c.valor):'<span class="muted">sem valor</span>'}</div><div class="acts">${c.link&&!isLeitura?`<a class="btn sm" href="${esc(c.link)}" target="_blank" rel="noopener" title="Abrir boleto">${icon('file-text')}Boleto</a>`:''}${canF&&!c.pago?`<button class="btn sm primary" data-pagar="${c.id}">${icon('check')}Paga</button>`:''}</div></div>`;
 }
 
 /* ================= Gráficos ================= */
@@ -215,7 +244,9 @@ function mountCharts(){
 function filtrados(tipo){
   const q=norm(S.q.trim());
   let l=ativos().filter(p=>p.tipo===tipo);
-  if(S.st==='conferir')l=l.filter(p=>norm(p.andamento).startsWith('conferir'));
+  if(S.st==='autorizacao')l=l.filter(p=>p.autorizacao==='pendente');
+  else if(S.st==='recusada')l=l.filter(p=>p.autorizacao==='recusada');
+  else if(S.st==='conferir')l=l.filter(p=>norm(p.andamento).startsWith('conferir'));
   else if(S.st==='custas')l=l.filter(p=>C.some(c=>c.processo_id===p.id&&!c.pago));
   else if(S.st!=='todos')l=l.filter(p=>(p.status||'Sem status')===S.st);
   if(q)l=l.filter(p=>norm([p.parte,p.numero,p.codigo_cliente,p.documento,p.loja,p.tipo_acao,p.andamento,p.identificacao].join(' ')).includes(q));
@@ -227,19 +258,20 @@ function lista(tipo){
   const cont={};todos.forEach(p=>{const k=p.status||'Sem status';cont[k]=(cont[k]||0)+1});
   const sts=[...(LISTAS.status[tipo]||[]),'Sem status'].filter(s=>cont[s]);Object.keys(cont).forEach(s=>{if(!sts.includes(s))sts.push(s)});
   const nConf=todos.filter(p=>norm(p.andamento).startsWith('conferir')).length,nCus=todos.filter(p=>C.some(c=>c.processo_id===p.id&&!c.pago)).length;
-  const chips=[['todos','Todos',todos.length],...sts.map(s=>[s,s,cont[s]]),...(nCus?[['custas','Com custa a pagar',nCus]]:[]),...(nConf?[['conferir','Para conferir',nConf]]:[])];
+  const nAut=todos.filter(p=>p.autorizacao==='pendente').length,nRec=todos.filter(p=>p.autorizacao==='recusada').length;
+  const chips=[['todos','Todos',todos.length],...(nAut?[['autorizacao','Aguardando autorização',nAut]]:[]),...(nRec?[['recusada','Recusadas',nRec]]:[]),...sts.map(s=>[s,s,cont[s]]),...(nCus?[['custas','Com custa a pagar',nCus]]:[]),...(nConf?[['conferir','Para conferir',nConf]]:[])];
   const pend=p=>C.filter(c=>c.processo_id===p.id&&!c.pago);
   const icons=p=>{const pc=pend(p),v=pc.some(c=>['vencida','hoje'].includes(custaSt(c)));return `<span class="ico-row">${p.n_anexos?`<span class="on" title="${p.n_anexos} anexo(s)">${icon('paperclip')}${p.n_anexos}</span>`:''}${pc.length?`<span class="${v?'miss':'on'}" title="${pc.length} custa(s) a pagar">${icon('receipt')}${pc.length}</span>`:''}${p.conferido?`<span class="on" title="Recebimento conferido">${icon('badge-check')}</span>`:''}</span>`};
   let head,rows;
   if(tipo==='cobranca'){
     head=`<th>Loja</th><th>Cliente</th><th>Status</th><th class="r">Dívida</th><th class="r">Acordo</th><th class="r">Pago</th><th></th><th>Último andamento</th>`;
-    rows=l.map(p=>`<tr data-open="${p.id}"><td>${esc(p.loja||'–')}</td><td class="desc"><b>${esc(parteNome(p))}</b><span class="nproc">${p.codigo_cliente?'Cód. '+esc(p.codigo_cliente)+' · ':''}${p.numero?esc(p.numero):'sem nº de processo'}</span></td><td>${stPill(p.status)}</td><td class="r num">${fmt(p.valor)}</td><td class="r num">${p.valor_acordo?fmt(p.valor_acordo):'–'}</td><td class="r num ${p.valor_pago?'pos':''}">${p.valor_pago?fmt(p.valor_pago):'–'}</td><td>${icons(p)}</td><td class="and"><span>${esc(p.andamento)}</span></td></tr>`).join('');
+    rows=l.map(p=>`<tr data-open="${p.id}"><td>${esc(p.loja||'–')}</td><td class="desc"><b>${esc(parteNome(p))}</b><span class="nproc">${p.documento&&!isLeitura?esc(p.documento)+' · ':''}${p.codigo_cliente?'Cód. '+esc(p.codigo_cliente)+' · ':''}${p.numero?esc(p.numero):'sem nº de processo'}</span></td><td>${stPill(p.status)} ${autPill(p)}</td><td class="r num">${fmt(p.valor)}</td><td class="r num">${p.valor_acordo?fmt(p.valor_acordo):'–'}</td><td class="r num ${p.valor_pago?'pos':''}">${p.valor_pago?fmt(p.valor_pago):'–'}</td><td>${icons(p)}</td><td class="and"><span>${esc(p.andamento)}</span></td></tr>`).join('');
   }else{
     head=`<th>Nº do processo</th><th>Parte</th><th>Tipo de ação</th><th>Loja</th><th>Status</th><th class="r">Condenação</th><th class="r">Pago</th><th></th>`;
     rows=l.map(p=>`<tr data-open="${p.id}"><td class="num">${esc(p.numero||'–')}</td><td class="desc"><b>${esc(parteNome(p))}</b>${p.identificacao?`<span class="nproc">${esc(p.identificacao)}</span>`:''}</td><td>${esc(p.tipo_acao||'–')}</td><td>${esc(p.loja||'–')}${p.uf?` <span class="tag">${esc(p.uf)}</span>`:''}</td><td>${stPill(p.status)}</td><td class="r num">${p.valor?fmt(p.valor):'–'}</td><td class="r num">${p.valor_pago?fmt(p.valor_pago):'–'}</td><td>${icons(p)}</td></tr>`).join('');
   }
   const cols=8,tv=soma(l,'valor');
-  return `<div class="ph"><div><h1>${TIPO_NOME[tipo]}</h1><p>${l.length} de ${todos.length} processos${tv?' · '+fmt0(tv):''}</p></div><div class="ph-actions"><button class="btn" data-csv="${tipo}">${icon('download')}Exportar</button>${canJ?`<button class="btn primary" data-act="novo" data-tipo="${tipo}">${icon('plus')}Novo processo</button>`:''}</div></div>
+  return `<div class="ph"><div><h1>${TIPO_NOME[tipo]}</h1><p>${l.length} de ${todos.length} processos${tv?' · '+fmt0(tv):''}</p></div><div class="ph-actions">${isLeitura?'':`<button class="btn" data-csv="${tipo}">${icon('download')}Exportar</button>`}${canJ?`<button class="btn primary" data-act="novo" data-tipo="${tipo}">${icon('plus')}Novo processo</button>`:''}</div></div>
   <section class="card"><div class="flt-row">${chips.map(([k,t,n])=>`<button class="chip ${S.st===k?'active':''}" data-st="${esc(k)}">${esc(t)} <small>${n}</small></button>`).join('')}</div>
   <div class="filters"><select class="mseg" data-ord="1" aria-label="Ordenar" style="border:0;padding:7px 10px;font-size:12.5px;font-weight:500">${[['padrao','Ordenar por loja'],['nome','Por nome'],['valor','Maior valor'],['recente','Atualizados recentemente']].map(([k,t])=>`<option value="${k}" ${S.ord===k?'selected':''}>${t}</option>`).join('')}</select><label class="search">${icon('search')}<input id="q" placeholder="Buscar cliente, nº, código..." value="${esc(S.q)}"></label></div>
   <div class="tbl-wrap"><table><thead><tr>${head}</tr></thead><tbody>${rows||`<tr><td colspan="${cols}" class="empty" style="padding:24px 12px">Nenhum processo encontrado.</td></tr>`}</tbody></table></div></section>`;
@@ -257,27 +289,35 @@ function exportarCSV(tipo){
 function pgCustas(){
   const cv=custasVis();
   const grupos={atencao:cv.filter(c=>['vencida','hoje','proxima'].includes(custaSt(c))),abertas:cv.filter(c=>!c.pago),pagas:cv.filter(c=>c.pago),todas:cv};
+  const af=audFut(),av=audVis();
   const tools=`<div class="ag-bar">${mseg('cv',[['lista','Lista','list'],['mes','Calendário','calendar-days']])}</div>`;
   let body;
   if(S.cv==='lista'){
-    const l=[...grupos[S.cf]].sort((a,b)=>S.cf==='pagas'?(b.pago_em||'').localeCompare(a.pago_em||''):(a.vencimento||'9').localeCompare(b.vencimento||'9'));
-    body=`<section class="card"><div class="flt-row" style="padding-bottom:14px">${[['atencao','Vencidas e vencendo'],['abertas','A pagar'],['pagas','Pagas'],['todas','Todas']].map(([k,t])=>`<button class="chip ${S.cf===k?'active':''}" data-cf="${k}">${t} <small>${grupos[k].length}</small></button>`).join('')}</div><div class="card-b" style="padding-top:0">${l.length?`<div class="ulist">${l.map(c=>cRow(c)).join('')}</div>`:'<p class="empty">Nenhuma custa aqui.</p>'}</div></section>`;
+    const chipsA=[['aud','Audiências',af.length],['atencao','Custas vencidas e vencendo',grupos.atencao.length],['abertas','Custas a pagar',grupos.abertas.length],['pagas','Custas pagas',grupos.pagas.length],['todas','Todas as custas',cv.length]];
+    let conteudo;
+    if(S.cf==='aud')conteudo=af.length?`<div class="ulist">${af.map(a=>aRow(a)).join('')}</div>`:`<p class="empty">Nenhuma audiência marcada.${canJ?' Para marcar, abra o processo e use "Nova audiência".':''}</p>`;
+    else{const l=[...grupos[S.cf]].sort((a,b)=>S.cf==='pagas'?(b.pago_em||'').localeCompare(a.pago_em||''):(a.vencimento||'9').localeCompare(b.vencimento||'9'));
+      conteudo=l.length?`<div class="ulist">${l.map(c=>cRow(c)).join('')}</div>`:'<p class="empty">Nenhuma custa aqui.</p>'}
+    body=`<section class="card"><div class="flt-row" style="padding-bottom:14px">${chipsA.map(([k,t,n])=>`<button class="chip ${S.cf===k?'active':''}" data-cf="${k}">${t} <small>${n}</small></button>`).join('')}</div><div class="card-b" style="padding-top:0">${conteudo}</div></section>`;
   }else{
     const first=new Date(S.cy,S.cm,1),start=first.getDay(),dim=new Date(S.cy,S.cm+1,0).getDate();
     const cells=Math.ceil((start+dim)/7)*7;let g=WD.map(w=>`<div class="wd">${w}</div>`).join('');
     for(let i=0;i<cells;i++){
       const t=new Date(S.cy,S.cm,1-start+i),d=ymd(t.getFullYear(),t.getMonth(),t.getDate()),out=t.getMonth()!==S.cm;
-      const its=cv.filter(c=>c.vencimento===d);
+      const its=cv.filter(c=>c.vencimento===d),aus=av.filter(a=>a.data===d);
       const k=c=>c.pago?'cp':(['vencida','hoje'].includes(custaSt(c))?'cv':'ca');
-      const items=its.map(c=>`<span class="ev ${k(c)}">${esc(parteNome(proc(c.processo_id)))}</span>`);
-      g+=`<button class="day ${out?'out':''} ${d===HOJE?'today':''} ${d===S.sel?'sel':''}" data-day="${d}" aria-label="${t.getDate()} de ${MES[t.getMonth()]}"><span class="n">${t.getDate()}</span>${items.slice(0,3).join('')}${items.length>3?`<span class="more">+${items.length-3}</span>`:''}<span class="dots">${its.slice(0,6).map(c=>`<i class="${k(c)}"></i>`).join('')}</span></button>`;
+      const items=[...aus.map(a=>`<span class="ev au">${a.hora?a.hora+' ':''}${esc(parteNome(proc(a.processo_id)))}</span>`),...its.map(c=>`<span class="ev ${k(c)}">${esc(parteNome(proc(c.processo_id)))}</span>`)];
+      const dots=[...aus.map(()=>'<i class="au"></i>'),...its.map(c=>`<i class="${k(c)}"></i>`)].slice(0,6).join('');
+      g+=`<button class="day ${out?'out':''} ${d===HOJE?'today':''} ${d===S.sel?'sel':''}" data-day="${d}" aria-label="${t.getDate()} de ${MES[t.getMonth()]}"><span class="n">${t.getDate()}</span>${items.slice(0,3).join('')}${items.length>3?`<span class="more">+${items.length-3}</span>`:''}<span class="dots">${dots}</span></button>`;
     }
-    const sel=cv.filter(c=>c.vencimento===S.sel),p=dParts(S.sel||HOJE);
-    body=`<div class="cal"><section class="card" style="overflow:hidden"><div class="cal-grid">${g}</div></section><section class="card"><div class="card-h"><h2>${S.sel===HOJE?'Hoje, ':''}${p.d} de ${MES[p.m]}</h2></div><div class="card-b">${sel.length?`<div class="ulist">${sel.map(c=>cRow(c)).join('')}</div>`:'<p class="empty">Nenhuma custa vence neste dia.</p>'}</div></section></div>`;
+    const sel=cv.filter(c=>c.vencimento===S.sel),selA=av.filter(a=>a.data===S.sel).sort((x,y)=>(x.hora||'').localeCompare(y.hora||'')),p=dParts(S.sel||HOJE);
+    body=`<div class="legend" style="margin-bottom:-6px"><span><i style="background:var(--nt)"></i>Audiência</span><span><i style="background:var(--neg)"></i>Custa vencida</span><span><i style="background:var(--accent)"></i>Custa a pagar</span><span><i style="background:var(--pos)"></i>Custa paga</span></div>
+    <div class="cal"><section class="card" style="overflow:hidden"><div class="cal-grid">${g}</div></section><section class="card"><div class="card-h"><h2>${S.sel===HOJE?'Hoje, ':''}${p.d} de ${MES[p.m]}</h2></div><div class="card-b">${sel.length||selA.length?`<div class="ulist">${selA.map(a=>aRow(a)).join('')}${sel.map(c=>cRow(c)).join('')}</div>`:'<p class="empty">Nada neste dia.</p>'}</div></section></div>`;
   }
   const semData=cv.filter(c=>!c.vencimento&&!c.pago).length;
-  return `<div class="ph"><div><h1>Custas</h1><p>${grupos.abertas.length} a pagar · ${fmt0(soma(grupos.abertas,'valor'))} com valor lançado${semData?` · ${semData} sem vencimento`:''}</p></div><div class="ph-actions">${S.cv==='mes'?`<div class="monthnav"><button data-mnav="-1" aria-label="Mês anterior">${icon('chevron-left')}</button><span>${MES[S.cm]} ${S.cy}</span><button data-mnav="1" aria-label="Próximo mês">${icon('chevron-right')}</button></div><button class="btn" data-today="1">Hoje</button>`:''}</div></div>${tools}${body}
-  <p class="hint">${canJ?'Para lançar uma custa, abra o processo e use "Nova custa". ':''}${canF?'Ao pagar, anexe o comprovante dentro do processo.':''}</p>`;
+  const sugH=canJ&&SUG.length?`<section class="card sug"><div class="card-h"><h2>${icon('sparkles')}Audiências encontradas nos andamentos</h2><span class="sub">confira e adicione na agenda com um clique</span></div><div class="card-b"><div class="ulist">${SUG.filter(x=>{const pp=proc(x.processo_id);return pp&&vis(pp)}).map(x=>{const pp=proc(x.processo_id),d=dParts(x.data);return `<div class="crow is-aud"><div class="datebox"><b>${d.d}</b><small>${MES3[d.m]}</small></div><div class="t" data-open="${pp.id}"><b>${esc(parteNome(pp))}</b><small>${esc(x.tipo)}${x.hora?' às '+x.hora:''} · ${esc(pp.loja||'sem loja')}</small><small class="trecho">"...${esc(x.trecho)}..."</small></div><div class="v"></div><div class="acts"><button class="btn sm" data-sug-ign="${x.andamento_id}">Ignorar</button><button class="btn sm primary" data-sug-add="${x.andamento_id}">${icon('plus')}Adicionar</button></div></div>`}).join('')}</div></div></section>`:'';
+  return `<div class="ph"><div><h1>Agenda</h1><p>${af.length} ${af.length===1?'audiência marcada':'audiências marcadas'} · ${grupos.abertas.length} custas a pagar${semData?` · ${semData} sem vencimento`:''}</p></div><div class="ph-actions">${S.cv==='mes'?`<div class="monthnav"><button data-mnav="-1" aria-label="Mês anterior">${icon('chevron-left')}</button><span>${MES[S.cm]} ${S.cy}</span><button data-mnav="1" aria-label="Próximo mês">${icon('chevron-right')}</button></div><button class="btn" data-today="1">Hoje</button>`:''}</div></div>${sugH}${tools}${body}
+  <p class="hint">${canJ?'Para lançar uma custa ou marcar uma audiência, abra o processo. ':''}${canF?'Ao pagar, anexe o comprovante dentro do processo.':''}</p>`;
 }
 
 /* ================= Janelas ================= */
@@ -322,15 +362,22 @@ function renderProc(p){
     const ax=p.anexos.filter(a=>a.custa_id===c.id);
     return `<div class="cbox"><div class="cbox-h"><b>Custa ${esc(c.tipo.toLowerCase())}</b>${cuPill(c)}<span class="v num">${c.valor?fmt(c.valor):'<span class="muted">sem valor</span>'}</span></div>
     <small class="muted">${c.vencimento?'Vence '+brDate(c.vencimento):'Sem vencimento'}${c.descricao?' · '+esc(c.descricao):''}${c.pago?` · paga por ${esc(c.pago_por)} em ${brDT(c.pago_em)}`:''} · lançada por ${esc(c.criado_por)}</small>
-    <div class="cbox-a">${c.link?`<a href="${esc(c.link)}" target="_blank" rel="noopener">${icon('external-link')}Boleto (link)</a>`:''}${ax.map(a=>`<a href="${esc(a.url)}" target="_blank" rel="noopener">${icon(a.categoria==='Comprovante'?'badge-check':'file-text')}${esc(a.categoria)}: ${esc(a.nome)}</a>`).join('')}<span class="sp"></span>
-      <button class="btn sm" data-anexar-custa="${c.id}" data-cat="${c.pago?'Comprovante':'Boleto'}">${icon('paperclip')}${c.pago?'Comprovante':'Boleto'}</button>
+    <div class="cbox-a">${c.link&&!isLeitura?`<a href="${esc(c.link)}" target="_blank" rel="noopener">${icon('external-link')}Boleto (link)</a>`:''}${ax.map(a=>`<a href="${esc(a.url)}" target="_blank" rel="noopener">${icon(a.categoria==='Comprovante'?'badge-check':'file-text')}${esc(a.categoria)}: ${esc(a.nome)}</a>`).join('')}<span class="sp"></span>
+      ${isLeitura?'':`<button class="btn sm" data-anexar-custa="${c.id}" data-cat="${c.pago?'Comprovante':'Boleto'}">${icon('paperclip')}${c.pago?'Comprovante':'Boleto'}</button>`}
       ${canJ&&!c.pago?`<button class="btn sm" data-edit-custa="${c.id}">${icon('pencil')}</button>`:''}
       ${canF?(c.pago?`<button class="btn sm" data-despagar="${c.id}">Desfazer pagamento</button>`:`<button class="btn sm primary" data-pagar="${c.id}">${icon('check')}Marcar paga</button>`):''}</div></div>`}).join(''):'<p class="empty">Nenhuma custa lançada.</p>';
+  const audH=p.audiencias.length?p.audiencias.map(a=>`<div class="cbox"><div class="cbox-h"><b>Audiência de ${esc(a.tipo.toLowerCase())}</b><span class="cu ${a.data<HOJE?'semdata':a.data===HOJE?'hoje':a.data<=addDays(HOJE,3)?'proxima':'aud'}">${a.data<HOJE?'Realizada':quando(a.data)}</span><span class="v num">${brDate(a.data)}${audHora(a)}</span></div>
+    ${a.local||a.obs?`<small class="muted">${a.local?esc(a.local):''}${a.local&&a.obs?' · ':''}${a.obs?esc(a.obs):''}</small>`:''}
+    ${canJ?`<div class="cbox-a"><small class="muted">marcada por ${esc(a.criado_por)}</small><span class="sp"></span><button class="btn sm" data-edit-aud="${a.id}">${icon('pencil')}Editar</button></div>`:''}</div>`).join(''):'<p class="empty">Nenhuma audiência marcada.</p>';
+  const autH=p.autorizacao==='pendente'?`<div class="box miss aut-box">${icon('shield-alert')}<span><b>Aguardando autorização.</b> Esta cobrança ainda não entra nos totais.</span>${canAutorizar?`<span class="aut-acts"><button class="btn sm" data-recusar="${p.id}">${icon('x')}Recusar</button><button class="btn sm primary" data-autorizar="${p.id}">${icon('check')}Autorizar</button></span>`:''}</div><div id="rec-form"></div>`
+    :p.autorizacao==='recusada'?`<div class="box aut-box rec">${icon('ban')}<span><b>Recusada por ${esc(p.autorizado_por)}</b> em ${brDT(p.autorizado_em)}${p.motivo_recusa?`: ${esc(p.motivo_recusa)}`:''}</span>${canJ?`<span class="aut-acts"><button class="btn sm" data-reenviar="${p.id}">${icon('send')}Reenviar para autorização</button></span>`:''}</div>`
+    :p.autorizado_por&&p.tipo==='cobranca'?`<p class="hint aut-ok">${icon('shield-check')}Autorizada por ${esc(p.autorizado_por)} em ${brDT(p.autorizado_em)}</p>`:'';
   const anxs=p.anexos.filter(a=>!a.custa_id);
   const anexH=anxs.length?`<ul class="anx-list">${anxs.map(a=>`<li><a href="${esc(a.url)}" target="_blank" rel="noopener">${icon(a.link?'external-link':'file')}<span>${esc(a.categoria)}: ${esc(a.nome)}</span><small class="muted">${esc(a.por)} · ${brDate(a.em)}</small></a>${a.por===ME.nome||isAdmin?`<button class="anx-del" data-del-anexo="${a.id}" title="Remover">${icon('trash-2')}</button>`:''}</li>`).join('')}</ul>`:'<p class="empty">Nenhum anexo.</p>';
   const hist=p.historico.map(h=>{const det=h.detalhes?fmtDet(h.detalhes):'';return `<div><b>${esc(h.acao)}</b> · ${esc(h.nome)} (${esc(h.usuario)}) · ${brDT(h.em)}${det?`<br><span style="white-space:pre-wrap">${esc(det)}</span>`:''}</div>`}).join('')||'Sem registros.';
   openLayer(`<div class="m-h"><div style="min-width:0"><h2 style="overflow:hidden;text-overflow:ellipsis">${esc(parteNome(p))}</h2><small class="muted">${TIPO_NOME[tipo]} · ${p.numero?esc(p.numero):'sem nº de processo'}</small></div><button class="x" data-close="1" aria-label="Fechar">${icon('x')}</button></div>
   <div class="m-b">
+    ${autH}
     <div class="sec">
       <div class="fin">
         <div><small>${tipo==='cobranca'?'Dívida':'Condenação'}</small><b class="num">${fmt(p.valor)}</b></div>
@@ -339,12 +386,12 @@ function renderProc(p){
       </div>
     </div>
     <form class="sec" id="f-proc" data-id="${p.id}" data-tipo="${tipo}">
-      <div class="sec-h"><h3>${icon('file-text')}Dados do processo</h3>${canJ?'':`<span class="lock" style="margin-left:auto">${icon('lock')}Só o jurídico edita</span>`}</div>
+      <div class="sec-h"><h3>${icon('file-text')}Dados do processo</h3>${canJ?'':`<span class="lock" style="margin-left:auto">${icon(isLeitura?'eye':'lock')}${isLeitura?'Só visualização':'Só o jurídico edita'}</span>`}</div>
       <div class="frm">${camposForm(p,tipo)}</div>
       <div class="sec-h" style="margin-top:6px"><h3>${icon('wallet')}Valores</h3></div>
       <div class="frm">
         <div class="fld"><label for="p-valor_acordo">Valor do acordo (R$)</label><input id="p-valor_acordo" inputmode="decimal" value="${numIn(p.valor_acordo)}" ${canJ?'':'disabled'}></div>
-        <div class="fld"><label for="p-valor_pago">Valor pago (R$) ${canF?'':`<span class="lock">${icon('lock')}financeiro</span>`}</label><input id="p-valor_pago" inputmode="decimal" value="${numIn(p.valor_pago)}" ${canF?'':'disabled'}></div>
+        <div class="fld"><label for="p-valor_pago">Valor pago (R$) ${canF||isLeitura?'':`<span class="lock">${icon('lock')}financeiro</span>`}</label><input id="p-valor_pago" inputmode="decimal" value="${numIn(p.valor_pago)}" ${canF?'':'disabled'}></div>
         <label class="check fld full"><input type="checkbox" id="p-conferido" ${p.conferido?'checked':''} ${canF?'':'disabled'}>Recebimento conferido pelo financeiro${p.conferido?` <span class="muted">(${esc(p.conferido_por)}, ${brDT(p.conferido_em)})</span>`:''}</label>
       </div>
       ${canJ||canF?`<div class="acts" style="display:flex;justify-content:flex-end;gap:8px">${canJ?`<button type="button" class="btn danger" data-excluir="${p.id}">${icon('trash-2')}Excluir</button>`:''}<button class="btn primary" type="submit">${icon('check')}Salvar alterações</button></div>`:''}
@@ -355,16 +402,21 @@ function renderProc(p){
       ${p.andamentos.length?`<ul class="tl">${p.andamentos.map(a=>`<li class="${norm(a.texto).startsWith('conferir')?'conferir':''}"><small>${brDT(a.em)} · ${esc(a.por)}</small>${esc(a.texto)}</li>`).join('')}</ul>`:'<p class="empty">Nenhum andamento.</p>'}
     </div>
     <div class="sec">
+      <div class="sec-h"><h3>${icon('gavel')}Audiências</h3>${canJ?`<button class="btn sm" data-nova-aud="${p.id}">${icon('plus')}Nova audiência</button>`:''}</div>
+      <div id="aud-form"></div>
+      ${audH}
+    </div>
+    <div class="sec">
       <div class="sec-h"><h3>${icon('receipt')}Custas</h3>${canJ?`<button class="btn sm" data-nova-custa="${p.id}">${icon('plus')}Nova custa</button>`:''}</div>
       <div id="custa-form"></div>
       ${custasH}
     </div>
-    <div class="sec anexos">
+    ${isLeitura?'':`<div class="sec anexos">
       <div class="sec-h"><h3>${icon('paperclip')}Anexos</h3><button class="btn sm" data-anexar="${p.id}">${icon('upload')}Anexar</button></div>
       <div id="anx-form"></div>
       ${anexH}
     </div>
-    <div class="sec"><details class="more-h"><summary>${icon('history')}Histórico de alterações (${p.historico.length})</summary><div class="hist" style="margin-top:10px">${hist}</div></details></div>
+    <div class="sec"><details class="more-h"><summary>${icon('history')}Histórico de alterações (${p.historico.length})</summary><div class="hist" style="margin-top:10px">${hist}</div></details></div>`}
   </div>`,true);
   window._P=p;
 }
@@ -378,6 +430,17 @@ function custaForm(pid,c){
     ${c.id?'':`<div class="fld full"><label for="c-arq">Boleto (opcional)</label><input id="c-arq" type="file" multiple accept=".pdf,image/*"></div>`}
   </div><div class="acts">${c.id&&canJ?`<button type="button" class="btn danger" data-del-custa="${c.id}">${icon('trash-2')}Excluir</button>`:''}<button type="button" class="btn" data-fechar-form="custa-form">Cancelar</button><button class="btn primary">${icon('check')}${c.id?'Salvar':'Lançar custa'}</button></div></form>`;
   drawIcons();$('#c-venc').focus();
+}
+function audForm(pid,a,pre){
+  a=a||{};pre=pre||{};
+  $('#aud-form').innerHTML=`<form class="inline-form" id="f-aud" data-pid="${pid}" data-aid="${a.id||''}" data-andamento="${pre.andamento_id||''}"><div class="frm">
+    <div class="fld"><label for="au-data">Data</label><input id="au-data" type="date" value="${a.data||pre.data||''}" required></div>
+    <div class="fld"><label for="au-hora">Hora</label><input id="au-hora" type="time" value="${a.hora||pre.hora||''}"></div>
+    <div class="fld"><label for="au-tipo">Tipo</label><select id="au-tipo">${opts(LISTAS.tipos_audiencia||[],a.tipo||pre.tipo||'Conciliação')}</select></div>
+    <div class="fld"><label for="au-local">Local ou link</label><input id="au-local" value="${esc(a.local||'')}" placeholder="Ex.: CEJUSC Brasília ou link da sala"></div>
+    <div class="fld full"><label for="au-obs">Observação</label><input id="au-obs" value="${esc(a.obs||'')}"></div>
+  </div><div class="acts">${a.id?`<button type="button" class="btn danger" data-del-aud="${a.id}">${icon('trash-2')}Excluir</button>`:''}<button type="button" class="btn" data-fechar-form="aud-form">Cancelar</button><button class="btn primary">${icon('check')}${a.id?'Salvar':'Marcar audiência'}</button></div></form>`;
+  drawIcons();$('#au-data').focus();
 }
 function anexoForm(pid,cid,cat){
   const alvo=cid?'#custa-form':'#anx-form';
@@ -394,7 +457,7 @@ async function enviarAnexo(pid,cid,cat,files,link){
 }
 
 /* ================= Administração ================= */
-let ADM={usuarios:null,historico:null,backups:null,espelho:null};
+let ADM={usuarios:null,historico:null,backups:null,espelho:null,apres:null};
 function pgAdmin(){
   if(!isAdmin)return '<p class="empty">Sem acesso.</p>';
   const tabs=[['usuarios','Usuários','users'],['lojas','Lojas','store'],['historico','Histórico','history'],['backups','Backups','archive'],['espelho','Planilha espelho','sheet'],['importar','Importar planilha','file-up']];
@@ -403,7 +466,7 @@ function pgAdmin(){
 function admBody(){
   if(S.adm==='usuarios'){
     if(!ADM.usuarios)return '<div class="loading" style="min-height:160px"><span class="spin"></span></div>';
-    return `<section class="card"><div class="card-h"><h2>Usuários</h2><span class="sub">cada pessoa entra com o próprio usuário; no primeiro acesso usa a senha padrão e cria a sua</span><div class="tools"><button class="btn sm primary" data-novo-user="1">${icon('user-plus')}Novo usuário</button></div></div><div class="tbl-wrap" style="padding-top:12px"><table><thead><tr><th>Nome</th><th>Usuário</th><th>Perfil</th><th>Lojas</th><th>Situação</th><th></th></tr></thead><tbody>${ADM.usuarios.map(u=>`<tr data-edit-user="${u.id}"><td><b style="font-weight:500">${esc(u.nome)}</b></td><td class="num">${esc(u.usuario)}</td><td>${esc(LISTAS.perfis[u.perfil]||u.perfil)}</td><td style="white-space:normal">${u.lojas.length?esc(u.lojas.join(', ')):'<span class="muted">Todas</span>'}</td><td>${!u.ativo?'<span class="cu vencida">Desativado</span>':u.pendente?'<span class="cu proxima">Aguardando 1º acesso</span>':'<span class="cu paga">Ativo</span>'}</td><td class="r">${icon('chevron-right')}</td></tr>`).join('')}</tbody></table></div></section>`;
+    return `${apresCard()}<section class="card"><div class="card-h"><h2>Usuários</h2><span class="sub">cada pessoa entra com o próprio usuário; no primeiro acesso usa a senha padrão e cria a sua</span><div class="tools"><button class="btn sm primary" data-novo-user="1">${icon('user-plus')}Novo usuário</button></div></div><div class="tbl-wrap" style="padding-top:12px"><table><thead><tr><th>Nome</th><th>Usuário</th><th>Perfil</th><th>Lojas</th><th>Autoriza cobranças</th><th>Situação</th><th></th></tr></thead><tbody>${ADM.usuarios.map(u=>`<tr data-edit-user="${u.id}"><td><b style="font-weight:500">${esc(u.nome)}</b></td><td class="num">${esc(u.usuario)}</td><td>${esc(LISTAS.perfis[u.perfil]||u.perfil)}</td><td style="white-space:normal">${u.lojas.length?esc(u.lojas.join(', ')):'<span class="muted">Todas</span>'}</td><td>${u.autoriza?'<span class="cu paga">Sim</span>':'<span class="muted">Não</span>'}</td><td>${!u.ativo?'<span class="cu vencida">Desativado</span>':u.pendente?'<span class="cu proxima">Aguardando 1º acesso</span>':'<span class="cu paga">Ativo</span>'}</td><td class="r">${icon('chevron-right')}</td></tr>`).join('')}</tbody></table></div></section>`;
   }
   if(S.adm==='lojas')return `<section class="card"><div class="card-h"><h2>Lojas</h2><span class="sub">${LOJAS.length} cadastradas</span></div><div class="card-b"><form id="f-loja" class="filters" style="padding:0 0 14px"><div class="fld" style="flex:1;min-width:160px"><input id="lj-nome" placeholder="Nome da loja"></div><div class="fld" style="width:80px"><input id="lj-uf" placeholder="UF" maxlength="2"></div><button class="btn primary">${icon('plus')}Adicionar</button></form><div class="lojas-chk" style="max-height:none">${LOJAS.map(l=>`<span>${esc(l.nome)}${l.uf?` <span class="tag">${esc(l.uf)}</span>`:''} <small class="muted">${P.filter(p=>p.loja===l.nome).length}</small></span>`).join('')}</div></div></section>`;
   if(S.adm==='historico'){
@@ -429,10 +492,17 @@ function admBody(){
 }
 function histQS(extra){const F=ADM.hf||{};const q=new URLSearchParams();if(F.usuario)q.set('usuario',F.usuario);if(F.q)q.set('q',F.q);if(extra)Object.entries(extra).forEach(([k,v])=>q.set(k,v));const t=q.toString();return t?'?'+t:''}
 const legivel=v=>v===true||v==='true'?'sim':v===false||v==='false'?'não':v==null||v===''?'vazio':(typeof v==='string'&&/^\d{4}-\d{2}-\d{2}/.test(v))?brDT(v.replace('T',' ').slice(0,16)):typeof v==='number'?v.toLocaleString('pt-BR'):v;
+function apresCard(){
+  const a=ADM.apres;if(!a)return '';
+  return `<section class="card" style="margin-bottom:16px"><div class="card-h"><h2>${icon('presentation')} Link de apresentação</h2><span class="sub">para quem só vai ver o BI, sem usuário e senha</span></div><div class="card-b" style="display:flex;flex-direction:column;gap:12px">
+    ${a.ativo?`<div class="link-box"><input id="apres-url" readonly value="${esc(a.url)}"><button class="btn sm" data-copiar="1">${icon('copy')}Copiar</button></div>`:'<div class="box">'+icon('link-2-off')+'Nenhum link ativo. Gere um para compartilhar.</div>'}
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn sm ${a.ativo?'':'primary'}" data-apres="gerar">${icon('refresh-cw')}${a.ativo?'Gerar link novo (o atual para de funcionar)':'Gerar link'}</button>${a.ativo?`<button class="btn sm danger" data-apres="desativar">${icon('link-2-off')}Desativar link</button>`:''}</div>
+    <p class="hint">Quem abre o link vê o Início, as listas e a agenda, mas não edita nada, não vê CPF/CNPJ nem anexos, e cobranças aguardando autorização não aparecem. Cada abertura fica no histórico.</p></div></section>`;
+}
 function fmtDet(s){try{const d=JSON.parse(s);if(Array.isArray(d))return d.map(x=>x.campo?`${x.campo}: ${legivel(x.de)} → ${legivel(x.para)}`:JSON.stringify(x)).join('\n');if(d&&typeof d==='object')return Object.entries(d).filter(([,v])=>v!=null&&v!=='').map(([k,v])=>`${k}: ${Array.isArray(v)?v.join(', '):legivel(v)}`).join(' · ');return String(d)}catch(e){return s}}
 async function carregaAdmin(){
   try{
-    if(S.adm==='usuarios'&&!ADM.usuarios){ADM.usuarios=(await api('/api/usuarios')).usuarios}
+    if(S.adm==='usuarios'&&!ADM.usuarios){ADM.usuarios=(await api('/api/usuarios')).usuarios;ADM.apres=await api('/api/apresentacao')}
     else if(S.adm==='historico'&&!ADM.historico){const r=await api('/api/historico'+histQS());ADM.historico=r.itens;ADM.pessoas=r.pessoas}
     else if(S.adm==='backups'&&!ADM.backups){ADM.backups=(await api('/api/backups')).backups}
     else if(S.adm==='espelho'&&!ADM.espelho){ADM.espelho=await api('/api/espelho')}
@@ -447,6 +517,7 @@ function openUser(u){
     <div class="fld"><label for="u-usuario">Usuário de acesso</label><input id="u-usuario" value="${esc(u.usuario||'')}" ${u.id?'disabled':''} placeholder="ex.: maria.silva" autocapitalize="none"></div>
     <div class="fld full"><label for="u-perfil">Perfil</label><select id="u-perfil">${Object.entries(LISTAS.perfis).map(([k,v])=>`<option value="${k}" ${u.perfil===k?'selected':''}>${v}</option>`).join('')}</select></div>
     <div class="fld full"><label>Lojas que enxerga <span class="muted">(nenhuma marcada = todas)</span></label><div class="lojas-chk">${LOJAS.map(l=>`<label><input type="checkbox" name="u-loja" value="${esc(l.nome)}" ${u.lojas.includes(l.nome)?'checked':''}>${esc(l.nome)}</label>`).join('')}</div></div>
+    <label class="check fld full"><input type="checkbox" id="u-autoriza" ${u.autoriza?'checked':''}>Autoriza cobranças novas lançadas pelo jurídico</label>
     ${u.id?`<label class="check fld full"><input type="checkbox" id="u-ativo" ${u.ativo?'checked':''}>Acesso ativo</label>`:''}
   </div><p class="hint">Jurídico: cadastra e edita processos, andamentos e custas. Financeiro: marca custas pagas, valor pago e conferência. Administrador: tudo, mais usuários e backups.</p></div>
   <div class="m-f">${u.id?`<button type="button" class="btn" data-reset="${u.id}" style="margin-right:auto">${icon('key-round')}Voltar senha para a padrão</button>`:''}<button type="button" class="btn" data-close="1">Cancelar</button><button class="btn primary">${icon('check')}Salvar</button></div></form>`);
@@ -465,8 +536,19 @@ document.addEventListener('click',async e=>{
   if(d.page){e.preventDefault();if(d.cfgo){S.cf=d.cfgo;S.cv='lista'}S.page=d.page;S.st='todos';S.q='';closeLayer();render();window.scrollTo(0,0);return}
   if(d.refresh){refresh();return}
   if(d.bell){S.bell=!S.bell;renderBell();drawIcons();return}
-  if(d.readall){atencao().forEach(c=>READ.add(`c${c.id}-${c.vencimento}`));saveRead();renderBell();drawIcons();return}
-  if(d.notif){const c=C.find(x=>x.id===+d.notif);READ.add(`c${c.id}-${c.vencimento}`);saveRead();S.bell=false;renderBell();openProc(c.processo_id);return}
+  if(d.readall){avisos().forEach(n=>READ.add(n.k));saveRead();renderBell();drawIcons();return}
+  if(d.notif){READ.add(d.notif);saveRead();S.bell=false;renderBell();openProc(+d.pid);return}
+  if(d.goaut){S.page='cobranca';S.st='autorizacao';S.q='';render();window.scrollTo(0,0);return}
+  if(d.autorizar){if(!confirma(t,'Confirmar autorização?'))return;await salvar(()=>api(`/api/processos/${d.autorizar}/autorizacao`,{method:'POST',body:{decisao:'autorizar'}}),'Cobrança autorizada.');openProc(ABERTO);return}
+  if(d.recusar){$('#rec-form').innerHTML=`<form class="inline-form" id="f-rec" data-id="${d.recusar}"><div class="fld"><label for="rec-motivo">Motivo da recusa</label><textarea id="rec-motivo" style="min-height:60px" required></textarea></div><div class="acts"><button type="button" class="btn" data-fechar-form="rec-form">Cancelar</button><button class="btn primary">Recusar</button></div></form>`;$('#rec-motivo').focus();return}
+  if(d.reenviar){await salvar(()=>api(`/api/processos/${d.reenviar}/autorizacao`,{method:'POST',body:{decisao:'reenviar'}}),'Reenviado para autorização.');openProc(ABERTO);return}
+  if(d.novaAud){audForm(+d.novaAud);return}
+  if(d.editAud){const p=window._P;audForm(ABERTO,p.audiencias.find(x=>x.id===+d.editAud));return}
+  if(d.delAud){if(!confirma(t,'Excluir mesmo?'))return;await salvar(()=>api('/api/audiencias/'+d.delAud,{method:'DELETE'}),'Audiência excluída.');openProc(ABERTO);return}
+  if(d.sugAdd){const x=SUG.find(z=>z.andamento_id===+d.sugAdd);t.disabled=true;await salvar(()=>api(`/api/processos/${x.processo_id}/audiencias`,{method:'POST',body:{data:x.data,hora:x.hora,tipo:x.tipo,andamento_id:x.andamento_id}}),'Audiência adicionada na agenda.');return}
+  if(d.sugIgn){await salvar(()=>api(`/api/sugestoes/${d.sugIgn}/ignorar`,{method:'POST'}),'Sugestão ignorada.');return}
+  if(d.apres){if(!confirma(t,d.apres==='gerar'&&ADM.apres&&ADM.apres.ativo?'Confirmar: o link atual para de funcionar':'Confirmar?'))return;try{ADM.apres=await api('/api/apresentacao',{method:'POST',body:{acao:d.apres}});toast(d.apres==='gerar'?'Link gerado.':'Link desativado.');$('#adm').innerHTML=admBody();drawIcons()}catch(er){toast(er.message)}return}
+  if(d.copiar){const el=$('#apres-url');try{await navigator.clipboard.writeText(el.value);toast('Link copiado.')}catch(er){el.select();toast('Selecionei o link: use Ctrl+C.')}return}
   if(d.set){const [k,v]=d.set.split(':');S[k]=v;salvaEstado();if(k==='adm'){$('#adm').innerHTML=admBody();document.querySelectorAll('[data-set^="adm:"]').forEach(b=>b.classList.toggle('active',b.dataset.set===d.set));drawIcons();carregaAdmin()}else render();return}
   if(d.st!==undefined&&t.classList.contains('chip')){S.st=d.st;render();return}
   if(d.cf){S.cf=d.cf;render();return}
@@ -512,7 +594,7 @@ const num=v=>{v=String(v||'').trim();if(!v)return '';if(/,/.test(v))v=v.replace(
 document.addEventListener('submit',async e=>{
   e.preventDefault();const f=e.target,btn=f.querySelector('button.primary');if(btn)btn.disabled=true;
   try{
-    if(f.id==='f-novo'){const d=lerForm();d.valor=num($('#p-valor').value);d.tipo=f.dataset.tipo;d.andamento=$('#p-and').value;const r=await salvar(()=>api('/api/processos',{method:'POST',body:d}),'Processo cadastrado.');openProc(r.id)}
+    if(f.id==='f-novo'){const d=lerForm();d.valor=num($('#p-valor').value);d.tipo=f.dataset.tipo;d.andamento=$('#p-and').value;const r=await salvar(()=>api('/api/processos',{method:'POST',body:d}));toast(r.pendente?'Cobrança cadastrada. Aguardando autorização.':'Processo cadastrado.');openProc(r.id)}
     if(f.id==='f-proc'){const p=window._P,d={};
       if(canJ){Object.assign(d,lerForm());d.valor=num($('#p-valor').value);d.valor_acordo=num($('#p-valor_acordo').value)}
       if(canF){d.valor_pago=num($('#p-valor_pago').value);d.conferido=$('#p-conferido').checked}
@@ -524,9 +606,14 @@ document.addEventListener('submit',async e=>{
       openProc(+f.dataset.pid)}
     if(f.id==='f-anx'){const files=$('#a-arq').files,link=$('#a-link').value.trim();if(!files.length&&!link){toast('Escolha um arquivo ou cole um link.');return}
       await salvar(()=>enviarAnexo(f.dataset.pid,f.dataset.cid,$('#a-cat').value,files,link),'Anexo enviado.');openProc(+f.dataset.pid)}
-    if(f.id==='f-user'){const body={id:f.dataset.id||null,nome:$('#u-nome').value,usuario:$('#u-usuario').value,perfil:$('#u-perfil').value,lojas:[...document.querySelectorAll('input[name=u-loja]:checked')].map(x=>x.value),ativo:$('#u-ativo')?$('#u-ativo').checked:true};
+    if(f.id==='f-user'){const body={id:f.dataset.id||null,nome:$('#u-nome').value,usuario:$('#u-usuario').value,perfil:$('#u-perfil').value,lojas:[...document.querySelectorAll('input[name=u-loja]:checked')].map(x=>x.value),autoriza:$('#u-autoriza').checked,ativo:$('#u-ativo')?$('#u-ativo').checked:true};
       await api('/api/usuarios',{method:'POST',body});toast(body.id?'Usuário salvo.':'Usuário criado. No primeiro acesso ele usa a senha padrão.');ADM.usuarios=null;closeLayer();carregaAdmin()}
     if(f.id==='f-hist'){ADM.hf={usuario:$('#h-quem').value,q:$('#h-q').value.trim()};ADM.historico=null;$('#adm').innerHTML=admBody();drawIcons();await carregaAdmin()}
+    if(f.id==='f-rec'){const m=$('#rec-motivo').value.trim();if(!m){toast('Escreva o motivo.');return}await salvar(()=>api(`/api/processos/${f.dataset.id}/autorizacao`,{method:'POST',body:{decisao:'recusar',motivo:m}}),'Cobrança recusada.');openProc(+f.dataset.id)}
+    if(f.id==='f-aud'){const body={data:$('#au-data').value,hora:$('#au-hora').value,tipo:$('#au-tipo').value,local:$('#au-local').value,obs:$('#au-obs').value,andamento_id:+f.dataset.andamento||null};
+      if(f.dataset.aid)await salvar(()=>api('/api/audiencias/'+f.dataset.aid,{method:'POST',body}),'Audiência alterada.');
+      else await salvar(()=>api(`/api/processos/${f.dataset.pid}/audiencias`,{method:'POST',body}),'Audiência marcada.');
+      openProc(+f.dataset.pid)}
     if(f.id==='f-loja'){await salvar(()=>api('/api/lojas',{method:'POST',body:{nome:$('#lj-nome').value,uf:$('#lj-uf').value}}),'Loja adicionada.')}
     if(f.id==='f-imp'){const fd=new FormData();fd.append('arquivo',$('#imp-arq').files[0]);
       let r;try{r=await api('/api/importar',{method:'POST',body:fd})}catch(er){if(er.dados&&er.dados.confirmar&&confirm(er.message+' Continuar mesmo assim?')){fd.append('confirmar','sim');r=await api('/api/importar',{method:'POST',body:fd})}else throw er}

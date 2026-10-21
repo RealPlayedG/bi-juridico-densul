@@ -56,7 +56,8 @@ def montar_linhas():
     """Devolve (linhas_cobranca, linhas_diversos) no formato das colunas da planilha original."""
     from db import andamentos, anexos, custas, engine, processos
     with engine.connect() as c:
-        ps = c.execute(select(processos).where(processos.c.excluido.is_(False)).order_by(processos.c.id)).mappings().all()
+        ps = c.execute(select(processos).where(processos.c.excluido.is_(False), func.coalesce(processos.c.autorizacao, "") == "")
+                       .order_by(processos.c.id)).mappings().all()  # cobranças aguardando autorização ficam de fora
         sub = select(andamentos.c.processo_id, func.max(andamentos.c.id).label("mid")).where(
             ~andamentos.c.texto.like("Conferir:%")).group_by(andamentos.c.processo_id).subquery()
         ult = dict(c.execute(select(andamentos.c.processo_id, andamentos.c.texto).join(sub, andamentos.c.id == sub.c.mid)).all())
