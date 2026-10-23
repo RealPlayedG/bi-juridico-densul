@@ -81,6 +81,37 @@ def _reset_pelo_railway():
 _reset_pelo_railway()
 
 
+def _criar_pelo_railway():
+    """Criar um usuário sem entrar no sistema (ex.: o primeiro administrador além do admin):
+    no Railway, CRIAR_USUARIO=usuario|Nome|perfil|autoriza(sim/nao) e SENHA_INICIAL=<senha provisória>.
+    Roda uma única vez por valor; a pessoa é obrigada a criar a própria senha no primeiro acesso.
+    Depois de criado, apague as duas variáveis."""
+    pedido = os.environ.get("CRIAR_USUARIO", "").strip()
+    senha = os.environ.get("SENHA_INICIAL", "")
+    if not pedido or len(senha) < SENHA_MINIMA:
+        return
+    marca = os.path.join(PASTA_DADOS, "usuarios_criados.txt")
+    feitos = open(marca).read().split("\n") if os.path.exists(marca) else []
+    if pedido in feitos:
+        return
+    partes = [x.strip() for x in pedido.split("|")]
+    if len(partes) < 3 or partes[2] not in PERFIS:
+        print("CRIAR_USUARIO inválido:", pedido, flush=True)
+        return
+    usuario, nome, perfil = partes[0].lower(), partes[1], partes[2]
+    autoriza = len(partes) > 3 and partes[3].lower() in ("sim", "1", "true")
+    with engine.begin() as c:
+        if not c.execute(select(usuarios.c.id).where(usuarios.c.usuario == usuario)).first():
+            c.execute(insert(usuarios).values(usuario=usuario, nome=nome, perfil=perfil, lojas="", hash=generate_password_hash(senha), v=1,
+                                              ativo=True, autoriza=autoriza, trocar_senha=True, criado_em=agora()))
+            registrar(c, None, "Usuário criado (pelo Railway)", detalhes={"usuario": usuario, "perfil": perfil, "autoriza": autoriza})
+    with open(marca, "a") as f:
+        f.write(pedido + "\n")
+
+
+_criar_pelo_railway()
+
+
 # ---------- usuário logado ----------
 
 def _usuario(uid):
@@ -161,7 +192,7 @@ def logado(f):
                 return jsonify(erro="Sessão expirada. Entre de novo."), 401
             return redirect(url_for("login"))
         request._eu = u
-        if not u["hash"]:
+        if not u["hash"] or u.get("trocar_senha"):
             if request.path.startswith("/api/"):
                 return jsonify(erro="Crie a sua senha antes de continuar."), 403
             return redirect(url_for("trocar_senha"))
@@ -214,7 +245,7 @@ def login():
                 _tentativas.pop(ip, None)
                 with engine.begin() as c:
                     registrar(c, u, "Entrou no sistema")
-                return redirect(url_for("trocar_senha" if not u["hash"] else "index"))
+                return redirect(url_for("trocar_senha" if not u["hash"] or u.get("trocar_senha") else "index"))
             _tentativas.setdefault(ip, []).append(time.time())
             erro = "Usuário ou senha incorretos."
             with engine.begin() as c:
@@ -247,7 +278,7 @@ def trocar_senha():
     if not u or u["v"] != session.get("v") or not u["ativo"]:
         session.clear()
         return redirect(url_for("login"))
-    primeiro = not u["hash"]
+    primeiro = not u["hash"] or bool(u.get("trocar_senha"))  # 1º acesso (senha padrão ou provisória): não pede a atual
     erro = None
     if request.method == "POST":
         atual, nova = request.form.get("atual", ""), request.form.get("nova", "")
@@ -262,12 +293,14 @@ def trocar_senha():
             erro = "As duas senhas não são iguais."
         elif SENHA_PADRAO and hmac.compare_digest(nova.encode(), SENHA_PADRAO.encode()):
             erro = "Escolha uma senha diferente da senha padrão."
+        elif u.get("trocar_senha") and u["hash"] and check_password_hash(u["hash"], nova):
+            erro = "Escolha uma senha diferente da senha provisória."
         elif nova.strip().lower() == u["usuario"]:
             erro = "A senha não pode ser igual ao usuário."
         else:
             v = (u["v"] or 0) + 1
             with engine.begin() as c:
-                c.execute(update(usuarios).where(usuarios.c.id == u["id"]).values(hash=generate_password_hash(nova), v=v))
+                c.execute(update(usuarios).where(usuarios.c.id == u["id"]).values(hash=generate_password_hash(nova), v=v, trocar_senha=False))
                 registrar(c, u, "Criou a própria senha" if primeiro else "Trocou a senha")
             session["v"] = v
             return redirect(url_for("index"))
@@ -832,7 +865,7 @@ def api_usuarios():
     with engine.connect() as c:
         us = [linha(r) for r in c.execute(select(usuarios).order_by(usuarios.c.nome))]
     for u in us:
-        u["pendente"] = not u.pop("hash")
+        u["pendente"] = not u.pop("hash") or bool(u.get("trocar_senha"))
         u["lojas"] = lojas_de(u)
     return jsonify(usuarios=us)
 
@@ -866,11 +899,16 @@ def api_salvar_usuario():
             return jsonify(erro="Usuário: use só letras, números e ponto (ex.: maria.silva)."), 400
         if c.execute(select(usuarios.c.id).where(usuarios.c.usuario == usuario)).first():
             return jsonify(erro="Esse usuário já existe."), 400
-        if not SENHA_PADRAO:
-            return jsonify(erro="Defina a SENHA_PADRAO no Railway antes de criar usuários."), 400
-        c.execute(insert(usuarios).values(usuario=usuario, nome=nome, perfil=perfil, lojas="|".join(ls), hash=None, v=1, ativo=True,
+        prov = str(d.get("senha_inicial") or "")
+        if prov and len(prov) < SENHA_MINIMA:
+            return jsonify(erro=f"A senha do primeiro acesso precisa ter pelo menos {SENHA_MINIMA} caracteres."), 400
+        if not prov and not SENHA_PADRAO:
+            return jsonify(erro="Informe a senha do primeiro acesso (ou defina a SENHA_PADRAO no Railway)."), 400
+        c.execute(insert(usuarios).values(usuario=usuario, nome=nome, perfil=perfil, lojas="|".join(ls), v=1, ativo=True,
+                                          hash=generate_password_hash(prov) if prov else None, trocar_senha=bool(prov),
                                           criado_em=agora(), autoriza=bool(d.get("autoriza"))))
-        registrar(c, eu(), "Usuário criado", detalhes={"usuario": usuario, "perfil": perfil, "lojas": ls, "autoriza": bool(d.get("autoriza"))})
+        registrar(c, eu(), "Usuário criado", detalhes={"usuario": usuario, "perfil": perfil, "lojas": ls, "autoriza": bool(d.get("autoriza")),
+                                                      "primeiro acesso": "senha provisória" if prov else "senha padrão"})
     return jsonify(ok=True)
 
 

@@ -56,6 +56,7 @@ usuarios = Table(
     Column("ativo", Boolean, default=True),
     Column("criado_em", DateTime, default=agora),
     Column("autoriza", Boolean, default=False),             # pode autorizar cobranças novas lançadas pelo jurídico
+    Column("trocar_senha", Boolean, default=False),         # senha provisória: obriga a criar uma própria no próximo acesso
 )
 
 lojas = Table(
@@ -184,6 +185,7 @@ PERFIS = {"admin": "Administrador", "juridico": "Jurídico", "financeiro": "Fina
 COLUNAS_NOVAS = [  # (tabela, coluna, tipo SQL): criadas sozinhas na subida, em bancos que já existiam
     ("historico", "ip", "VARCHAR(64) DEFAULT ''"),
     ("usuarios", "autoriza", "BOOLEAN DEFAULT FALSE"),
+    ("usuarios", "trocar_senha", "BOOLEAN DEFAULT FALSE"),
     ("processos", "autorizacao", "VARCHAR(12) DEFAULT ''"),
     ("processos", "autorizado_por", "VARCHAR(120) DEFAULT ''"),
     ("processos", "autorizado_em", "TIMESTAMP"),

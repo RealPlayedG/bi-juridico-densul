@@ -515,6 +515,7 @@ function openUser(u){
   openLayer(`${mh(u.id?'Editar usuário':'Novo usuário')}<form id="f-user" data-id="${u.id||''}"><div class="m-b"><div class="frm">
     <div class="fld"><label for="u-nome">Nome</label><input id="u-nome" value="${esc(u.nome||'')}" required></div>
     <div class="fld"><label for="u-usuario">Usuário de acesso</label><input id="u-usuario" value="${esc(u.usuario||'')}" ${u.id?'disabled':''} placeholder="ex.: maria.silva" autocapitalize="none"></div>
+    ${u.id?'':`<div class="fld full"><label for="u-senha">Senha do primeiro acesso <span class="muted">(opcional; vazio = senha padrão)</span></label><input id="u-senha" type="text" autocomplete="off" placeholder="mínimo 6 caracteres"><small class="muted">No primeiro acesso o sistema obriga a pessoa a criar a própria senha.</small></div>`}
     <div class="fld full"><label for="u-perfil">Perfil</label><select id="u-perfil">${Object.entries(LISTAS.perfis).map(([k,v])=>`<option value="${k}" ${u.perfil===k?'selected':''}>${v}</option>`).join('')}</select></div>
     <div class="fld full"><label>Lojas que enxerga <span class="muted">(nenhuma marcada = todas)</span></label><div class="lojas-chk">${LOJAS.map(l=>`<label><input type="checkbox" name="u-loja" value="${esc(l.nome)}" ${u.lojas.includes(l.nome)?'checked':''}>${esc(l.nome)}</label>`).join('')}</div></div>
     <label class="check fld full"><input type="checkbox" id="u-autoriza" ${u.autoriza?'checked':''}>Autoriza cobranças novas lançadas pelo jurídico</label>
@@ -606,7 +607,7 @@ document.addEventListener('submit',async e=>{
       openProc(+f.dataset.pid)}
     if(f.id==='f-anx'){const files=$('#a-arq').files,link=$('#a-link').value.trim();if(!files.length&&!link){toast('Escolha um arquivo ou cole um link.');return}
       await salvar(()=>enviarAnexo(f.dataset.pid,f.dataset.cid,$('#a-cat').value,files,link),'Anexo enviado.');openProc(+f.dataset.pid)}
-    if(f.id==='f-user'){const body={id:f.dataset.id||null,nome:$('#u-nome').value,usuario:$('#u-usuario').value,perfil:$('#u-perfil').value,lojas:[...document.querySelectorAll('input[name=u-loja]:checked')].map(x=>x.value),autoriza:$('#u-autoriza').checked,ativo:$('#u-ativo')?$('#u-ativo').checked:true};
+    if(f.id==='f-user'){const body={id:f.dataset.id||null,nome:$('#u-nome').value,usuario:$('#u-usuario').value,perfil:$('#u-perfil').value,lojas:[...document.querySelectorAll('input[name=u-loja]:checked')].map(x=>x.value),autoriza:$('#u-autoriza').checked,senha_inicial:$('#u-senha')?$('#u-senha').value:'',ativo:$('#u-ativo')?$('#u-ativo').checked:true};
       await api('/api/usuarios',{method:'POST',body});toast(body.id?'Usuário salvo.':'Usuário criado. No primeiro acesso ele usa a senha padrão.');ADM.usuarios=null;closeLayer();carregaAdmin()}
     if(f.id==='f-hist'){ADM.hf={usuario:$('#h-quem').value,q:$('#h-q').value.trim()};ADM.historico=null;$('#adm').innerHTML=admBody();drawIcons();await carregaAdmin()}
     if(f.id==='f-rec'){const m=$('#rec-motivo').value.trim();if(!m){toast('Escreva o motivo.');return}await salvar(()=>api(`/api/processos/${f.dataset.id}/autorizacao`,{method:'POST',body:{decisao:'recusar',motivo:m}}),'Cobrança recusada.');openProc(+f.dataset.id)}
