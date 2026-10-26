@@ -315,3 +315,5 @@ a.btn{text-decoration:none;color:var(--ink)} a.btn.primary{color:var(--primary-i
 .link-box{display:flex;gap:8px;align-items:center}
 .link-box input{flex:1;min-width:0;border:1px solid var(--line);border-radius:6px;padding:9px 12px;background:var(--surface-2);font-size:13px;color:var(--ink)}
 .card-h h2 svg.lucide{vertical-align:-3px}
+.btn-entrar{margin-left:6px;text-decoration:none}
+@media (max-width:600px){.btn-entrar{padding:6px 10px}}

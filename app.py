@@ -269,6 +269,10 @@ def ver_apresentacao(token):
     if _limite(ip) or not tok or not hmac.compare_digest(token, tok):
         _tentativas.setdefault(ip, []).append(time.time())
         return render_template("login.html", erro="Este link de apresentação não existe mais. Peça o link novo ao administrador."), 404
+    # quem já entrou com usuário e senha continua logado (não cai para o modo visualização)
+    u = _usuario(session.get("uid")) if session.get("uid") else None
+    if u and u["ativo"] and u["v"] == session.get("v"):
+        return redirect(url_for("index"))
     session.clear()
     session.permanent = True
     session["apresentacao"] = tok
