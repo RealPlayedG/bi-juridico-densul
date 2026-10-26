@@ -101,10 +101,15 @@ def _criar_pelo_railway():
     usuario, nome, perfil = partes[0].lower(), partes[1], partes[2]
     autoriza = len(partes) > 3 and partes[3].lower() in ("sim", "1", "true")
     with engine.begin() as c:
-        if not c.execute(select(usuarios.c.id).where(usuarios.c.usuario == usuario)).first():
+        r = c.execute(select(usuarios).where(usuarios.c.usuario == usuario)).first()
+        if not r:
             c.execute(insert(usuarios).values(usuario=usuario, nome=nome, perfil=perfil, lojas="", hash=generate_password_hash(senha), v=1,
                                               ativo=True, autoriza=autoriza, trocar_senha=True, criado_em=agora()))
             registrar(c, None, "Usuário criado (pelo Railway)", detalhes={"usuario": usuario, "perfil": perfil, "autoriza": autoriza})
+        elif r.trocar_senha:
+            # ainda não fez o primeiro acesso: ajusta perfil e permissão (a senha provisória continua a mesma)
+            c.execute(update(usuarios).where(usuarios.c.id == r.id).values(nome=nome, perfil=perfil, autoriza=autoriza))
+            registrar(c, None, "Usuário ajustado (pelo Railway)", detalhes={"usuario": usuario, "perfil": perfil, "autoriza": autoriza})
     with open(marca, "a") as f:
         f.write(pedido + "\n")
 
