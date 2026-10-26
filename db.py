@@ -64,6 +64,7 @@ lojas = Table(
     Column("id", Integer, primary_key=True),
     Column("nome", String(80), unique=True, nullable=False),
     Column("uf", String(2), default=""),
+    Column("regional", String(40), default=""),
 )
 
 processos = Table(
@@ -182,10 +183,92 @@ TIPOS_CUSTA = ["Inicial", "Serviço", "Cartório", "Complementar", "Outra"]
 TIPOS_AUDIENCIA = ["Conciliação", "Instrução e julgamento", "Una", "Mediação", "Outra"]
 CATEGORIAS_ANEXO = ["Nota", "Boleto", "Comprovante", "Documento"]
 PERFIS = {"admin": "Administrador", "juridico": "Jurídico", "financeiro": "Financeiro"}
+# Regionais e suas lojas, como na aba "Base Gráfico" da planilha Jurídico (ordem da planilha)
+REGIONAIS = {
+    "Matriz": [
+        "Matriz",
+        "Aparecida",
+        "Gás"
+    ],
+    "Goiás": [
+        "Bueno",
+        "Castelo",
+        "Anápolis",
+        "Rio Verde"
+    ],
+    "PI / ES / RN": [
+        "Teresina",
+        "Mossoró",
+        "Serra"
+    ],
+    "PA": [
+        "Ananindeua",
+        "Castanhal",
+        "Santarém",
+        "Marabá",
+        "Redenção"
+    ],
+    "MG": [
+        "Uberlândia",
+        "Contagem"
+    ],
+    "MT / MS": [
+        "Rondonópolis",
+        "Confresa",
+        "Cuiabá",
+        "Barra do Garça",
+        "Sinop",
+        "Água Boa",
+        "Jiraya"
+    ],
+    "MA": [
+        "São Luis",
+        "Imperatriz",
+        "Balsas"
+    ],
+    "TO": [
+        "Palmas",
+        "Araguaína",
+        "Gurupi"
+    ],
+    "RJ": [
+        "Rio de Janeiro"
+    ],
+    "SUL": [
+        "Florianópolis",
+        "Foz",
+        "Bauru",
+        "Curitiba",
+        "Magnético"
+    ],
+    "AP": [
+        "Macapá"
+    ],
+    "Atacado": [
+        "Sparcould",
+        "Atacado"
+    ],
+    "Brasília": [
+        "Brasília"
+    ]
+}
+
+
+def regional_da_loja(nome):
+    """Regional de uma loja pelo nome (sem diferença de acento ou maiúscula). Vazio se não estiver na lista."""
+    import unicodedata
+    k = lambda x: unicodedata.normalize("NFKD", str(x)).encode("ascii", "ignore").decode().lower().strip()  # noqa: E731
+    for reg, ls in REGIONAIS.items():
+        if k(nome) in {k(x) for x in ls}:
+            return reg
+    return ""
+
+
 COLUNAS_NOVAS = [  # (tabela, coluna, tipo SQL): criadas sozinhas na subida, em bancos que já existiam
     ("historico", "ip", "VARCHAR(64) DEFAULT ''"),
     ("usuarios", "autoriza", "BOOLEAN DEFAULT FALSE"),
     ("usuarios", "trocar_senha", "BOOLEAN DEFAULT FALSE"),
+    ("lojas", "regional", "VARCHAR(40) DEFAULT ''"),
     ("processos", "autorizacao", "VARCHAR(12) DEFAULT ''"),
     ("processos", "autorizado_por", "VARCHAR(120) DEFAULT ''"),
     ("processos", "autorizado_em", "TIMESTAMP"),

@@ -212,7 +212,8 @@ def gravar(itens, quem, origem="planilha"):
         existentes = {r.nome for r in conn.execute(select(lojas.c.nome))}
         for nome in sorted({it["loja"] for it in itens if it["loja"]} - existentes):
             uf = next((it["uf"] for it in itens if it["loja"] == nome and it.get("uf")), "")
-            conn.execute(insert(lojas).values(nome=nome, uf=uf))
+            from db import regional_da_loja
+            conn.execute(insert(lojas).values(nome=nome, uf=uf, regional=regional_da_loja(nome)))
         for it in itens:
             campos = {k: it.get(k) for k in ("tipo", "loja", "uf", "carteira", "ano", "codigo_cliente", "parte", "documento",
                                               "identificacao", "tipo_acao", "numero", "status", "valor", "valor_acordo",

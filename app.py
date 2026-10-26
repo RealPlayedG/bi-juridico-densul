@@ -29,7 +29,7 @@ load_dotenv()
 
 import backup  # noqa: E402
 import espelho  # noqa: E402
-from db import (CATEGORIAS_ANEXO, IDENTIFICACOES, PERFIS, STATUS, TIPOS_AUDIENCIA, TIPOS_CUSTA, agora, andamentos,  # noqa: E402
+from db import (REGIONAIS, regional_da_loja, CATEGORIAS_ANEXO, IDENTIFICACOES, PERFIS, STATUS, TIPOS_AUDIENCIA, TIPOS_CUSTA, agora, andamentos,  # noqa: E402
                 anexos, audiencias, config_gravar, config_ler, criar_tabelas, custas, engine, garantir_admin, historico, linha,
                 lojas, processos, registrar, usuarios)
 from sqlalchemy import and_, func, insert, select, update  # noqa: E402
@@ -115,6 +115,24 @@ def _criar_pelo_railway():
 
 
 _criar_pelo_railway()
+
+
+def _preencher_regionais():
+    """Uma vez: dá a regional de cada loja já cadastrada, pela divisão da planilha. Não mexe em loja que já tem regional."""
+    if config_ler("regionais_preenchidas", ""):
+        return
+    with engine.begin() as c:
+        n = 0
+        for r in c.execute(select(lojas.c.id, lojas.c.nome, lojas.c.regional)).all():
+            reg = regional_da_loja(r.nome)
+            if reg and not r.regional:
+                c.execute(update(lojas).where(lojas.c.id == r.id).values(regional=reg))
+                n += 1
+        config_gravar(c, "regionais_preenchidas", "1")
+        registrar(c, None, "Regionais das lojas preenchidas pela planilha", detalhes={"lojas": n})
+
+
+_preencher_regionais()
 
 
 # ---------- usuário logado ----------
@@ -436,7 +454,8 @@ def api_dados():
     auds = [x for x in auds if x["processo_id"] in ids]
     return jsonify(processos=ps, custas=cs, audiencias=auds, sugestoes=sug, lojas=ls, hoje=agora().date().isoformat(),
                    listas={"status": STATUS, "identificacoes": IDENTIFICACOES, "tipos_custa": TIPOS_CUSTA,
-                           "categorias": CATEGORIAS_ANEXO, "perfis": PERFIS, "tipos_audiencia": TIPOS_AUDIENCIA})
+                           "categorias": CATEGORIAS_ANEXO, "perfis": PERFIS, "tipos_audiencia": TIPOS_AUDIENCIA,
+                           "regionais": list(REGIONAIS.keys())})
 
 
 @app.route("/api/processos/<int:pid>")
@@ -969,8 +988,27 @@ def api_nova_loja():
     with engine.begin() as c:
         if c.execute(select(lojas.c.id).where(func.lower(lojas.c.nome) == nome.lower())).first():
             return jsonify(erro="Essa loja já existe."), 400
-        c.execute(insert(lojas).values(nome=nome, uf=str(d.get("uf", "")).strip().upper()[:2]))
-        registrar(c, eu(), "Loja cadastrada", detalhes={"nome": nome})
+        reg = d.get("regional") if d.get("regional") in REGIONAIS else regional_da_loja(nome)
+        c.execute(insert(lojas).values(nome=nome, uf=str(d.get("uf", "")).strip().upper()[:2], regional=reg))
+        registrar(c, eu(), "Loja cadastrada", detalhes={"nome": nome, "regional": reg})
+    return jsonify(ok=True)
+
+
+@app.post("/api/lojas/<int:lid>")
+@logado
+@so("admin")
+def api_editar_loja(lid):
+    d = corpo()
+    reg = d.get("regional", "")
+    if reg and reg not in REGIONAIS:
+        return jsonify(erro="Regional inválida."), 400
+    with engine.begin() as c:
+        r = c.execute(select(lojas).where(lojas.c.id == lid)).first()
+        if not r:
+            abort(404)
+        if (r.regional or "") != reg:
+            c.execute(update(lojas).where(lojas.c.id == lid).values(regional=reg))
+            registrar(c, eu(), "Regional da loja alterada", detalhes=[{"campo": f"Regional de {r.nome}", "de": r.regional, "para": reg}])
     return jsonify(ok=True)
 
 

@@ -65,6 +65,13 @@ o histórico só dele. Para isso funcionar, **cada pessoa precisa ter o próprio
 - A Agenda mostra **Audiências encontradas nos andamentos** (ex.: "audiência de conciliação para o dia 23/10/2026 às 10:00")
   para o jurídico adicionar com um clique ou ignorar. Nada entra sozinho.
 
+## Filtro de lojas e regionais
+
+- O botão de lojas no topo abre o filtro: marque uma ou mais **regionais** e/ou uma ou mais **lojas**. Vale para Início,
+  Cobrança, Diversos e Agenda, e fica salvo no navegador.
+- As regionais vieram da aba "Base Gráfico" da planilha. Cada loja tem a sua regional em **Administração > Lojas**,
+  onde o administrador pode trocar (fica no histórico). Loja sem regional aparece em "Sem regional".
+
 ## Custas e avisos
 
 - O jurídico lança a custa dentro do processo (tipo, vencimento, valor, boleto).

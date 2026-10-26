@@ -24,9 +24,9 @@ const isLeitura=ME.perfil==='leitura', canAutorizar=!!ME.autoriza;
 let P=[],C=[],AUD=[],SUG=[],LOJAS=[],LISTAS={status:{},tipos_custa:[],categorias:[],identificacoes:[],perfis:{}},HOJE='';
 let LOADED=false,SYNC={at:null,err:null,busy:false};
 const _t=new Date();
-const S={g:{st:'rosca',lj:'barras',dv:'barras'},page:'painel',loja:'',q:'',st:'todos',cv:'lista',cf:'atencao',cy:_t.getFullYear(),cm:_t.getMonth(),sel:'',bell:false,ord:'padrao',adm:'usuarios'};
-try{const sv=JSON.parse(localStorage.getItem('bj-estado')||'{}');if(sv.loja!==undefined)S.loja=sv.loja;if(sv.cv)S.cv=sv.cv;if(sv.g)Object.assign(S.g,sv.g)}catch(e){}
-function salvaEstado(){try{localStorage.setItem('bj-estado',JSON.stringify({loja:S.loja,cv:S.cv,g:S.g}))}catch(e){}}
+const S={g:{st:'rosca',lj:'barras',dv:'barras'},fl:{lojas:[],regs:[]},flOpen:false,page:'painel',loja:'',q:'',st:'todos',cv:'lista',cf:'atencao',cy:_t.getFullYear(),cm:_t.getMonth(),sel:'',bell:false,ord:'padrao',adm:'usuarios'};
+try{const sv=JSON.parse(localStorage.getItem('bj-estado')||'{}');if(sv.fl&&Array.isArray(sv.fl.lojas))S.fl={lojas:sv.fl.lojas,regs:sv.fl.regs||[]};else if(sv.loja)S.fl={lojas:[sv.loja],regs:[]};if(sv.cv)S.cv=sv.cv;if(sv.g)Object.assign(S.g,sv.g)}catch(e){}
+function salvaEstado(){try{localStorage.setItem('bj-estado',JSON.stringify({fl:S.fl,cv:S.cv,g:S.g}))}catch(e){}}
 
 async function api(path,opts={}){
   const o={method:opts.method||'GET',headers:{'X-Requested-With':'fetch'},credentials:'same-origin'};
@@ -53,7 +53,18 @@ async function salvar(fn,okMsg){
 /* ================= Regras ================= */
 const PM=Object.create(null);
 const proc=id=>PM[id]||(PM[id]=P.find(p=>p.id===id));
-const vis=p=>!S.loja||p.loja===S.loja;
+const SEM_REG='Sem regional';
+const lojaReg=n=>{const l=LOJAS.find(x=>x.nome===n);return (l&&l.regional)||SEM_REG};
+const lojasDisp=()=>ME.lojas&&ME.lojas.length?LOJAS.filter(l=>ME.lojas.includes(l.nome)):LOJAS;
+const filtroAtivo=()=>S.fl.lojas.length+S.fl.regs.length>0;
+const vis=p=>!filtroAtivo()||S.fl.lojas.includes(p.loja)||S.fl.regs.includes(lojaReg(p.loja));
+function lojasFiltradas(){return lojasDisp().filter(l=>S.fl.lojas.includes(l.nome)||S.fl.regs.includes(l.regional||SEM_REG)).map(l=>l.nome)}
+function filtroNome(){
+  if(!filtroAtivo())return ME.lojas&&ME.lojas.length?'Minhas lojas':'Todas as lojas';
+  if(!S.fl.lojas.length&&S.fl.regs.length===1)return 'Regional '+S.fl.regs[0];
+  const n=lojasFiltradas();return n.length===1?n[0]:`${n.length} lojas`;
+}
+function regsOrdem(){const ord=[...(LISTAS.regionais||[]),SEM_REG];const tem=new Set(lojasDisp().map(l=>l.regional||SEM_REG));return ord.filter(r=>tem.has(r))}
 const ativos=()=>P.filter(vis);
 const autorizado=p=>!p.autorizacao;               // pendente/recusada não entram nos totais
 const validos=()=>ativos().filter(autorizado);
@@ -94,7 +105,7 @@ function renderShell(){
   $('#nav').innerHTML=PAGES.map(([k,ic,t])=>`<button class="${S.page===k?'active':''}" data-page="${k}">${icon(ic)}${t}${k==='custas'&&at?`<span class="badge">${at}</span>`:''}</button>`).join('')
     +(isAdmin?`<button class="nav-extra ${S.page==='admin'?'active':''}" data-page="admin">${icon('shield')}Administração</button>`:'');
   const minhas=ME.lojas&&ME.lojas.length?LOJAS.filter(l=>ME.lojas.includes(l.nome)):LOJAS;
-  $('#lojaSel').innerHTML=`${icon('store')}<select id="loja" aria-label="Loja"><option value="">${ME.lojas&&ME.lojas.length?'Minhas lojas':'Todas as lojas'}</option>${minhas.map(l=>`<option ${S.loja===l.nome?'selected':''}>${esc(l.nome)}</option>`).join('')}</select>`;
+  $('#lojaSel').innerHTML=filtroHTML();
   if(isLeitura){$('#profile').innerHTML=`<span class="me"><span class="av dono">${icon('eye')}</span><span class="me-t"><b>Modo apresentação</b><small>Só visualização</small></span></span><a class="btn sm primary btn-entrar" href="/login" title="Entrar com usuário e senha">${icon('log-in')}Entrar</a>`}
   else $('#profile').innerHTML=`<span class="me"><span class="av ${ME.perfil==='financeiro'?'sec':ME.perfil==='admin'?'eq':'dono'}">${esc((ME.nome||'?')[0])}</span><span class="me-t"><b>${esc(ME.nome)}</b><small>${esc(ME.perfil_nome)}</small></span></span><a class="iconbtn sm" href="/senha" title="Trocar senha" aria-label="Trocar senha">${icon('key-round')}</a><a class="iconbtn sm" href="/sair" title="Sair" aria-label="Sair">${icon('log-out')}</a>`;
   $('#sync').innerHTML=SYNC.err?`<span class="sync err" title="${esc(SYNC.err)}">${icon('cloud-off')}<span>Sem conexão</span></span>`:`<button class="sync" data-refresh="1" title="Atualizar agora">${icon(SYNC.busy?'loader':'cloud')}<span>${SYNC.at?'Atualizado às '+pad(SYNC.at.getHours())+':'+pad(SYNC.at.getMinutes()):'Conectando'}</span></button>`;
@@ -108,6 +119,19 @@ function avisos(){
   audProx().forEach(a=>{const p=proc(a.processo_id);out.push({k:`a${a.id}-${a.data}-${a.hora}`,tipo:'aud',ic:'gavel',cls:a.data===HOJE?'late':'rem',t:`Audiência ${a.tipo.toLowerCase()} ${quando(a.data)}${audHora(a)}`,sub:`${parteNome(p)} · ${p.loja||'sem loja'}`,pid:p.id,ord:'1'+a.data+a.hora})});
   atencao().forEach(c=>{const p=proc(c.processo_id),st=custaSt(c);out.push({k:`c${c.id}-${c.vencimento}`,tipo:'cus',ic:st==='proxima'?'calendar-clock':'alert-triangle',cls:st==='proxima'?'rem':'late',t:`Custa ${c.tipo.toLowerCase()} ${st==='vencida'?'vencida em '+brDate(c.vencimento):'vence '+quando(c.vencimento)}${c.valor?' · '+fmt(c.valor):''}`,sub:`${parteNome(p)} · ${p.loja||'sem loja'}`,pid:p.id,ord:'2'+c.vencimento})});
   return out;
+}
+function filtroHTML(){
+  const regs=regsOrdem(),ls=lojasDisp();
+  const cnt=n=>P.filter(p=>p.loja===n&&p.tipo==='cobranca').length;
+  const btn=`<button class="fl-btn ${filtroAtivo()?'on':''}" data-flbtn="1" aria-expanded="${S.flOpen}">${icon('store')}<span>${esc(filtroNome())}</span>${icon('chevron-down')}</button>`;
+  if(!S.flOpen)return btn;
+  return btn+`<div class="fl-pop" role="dialog" aria-label="Filtrar lojas">
+    <div class="fl-h"><b>Regional</b>${filtroAtivo()?'<button class="fl-link" data-flclear="1">Limpar filtro</button>':''}</div>
+    <div class="fl-regs">${regs.map(r=>`<label class="fl-chip ${S.fl.regs.includes(r)?'on':''}"><input type="checkbox" data-flreg="${esc(r)}" ${S.fl.regs.includes(r)?'checked':''}>${esc(r)}</label>`).join('')}</div>
+    <div class="fl-h"><b>Lojas</b><span class="muted">marque uma ou mais</span></div>
+    <div class="fl-lojas">${regs.map(r=>{const doR=ls.filter(l=>(l.regional||SEM_REG)===r);const regOn=S.fl.regs.includes(r);
+      return `<div class="fl-grupo"><small>${esc(r)}</small>${doR.map(l=>{const on=regOn||S.fl.lojas.includes(l.nome);return `<label class="${regOn?'via':''}"><input type="checkbox" data-flloja="${esc(l.nome)}" ${on?'checked':''} ${regOn?'disabled title="Já incluída pela regional"':''}>${esc(l.nome)}<span class="muted">${cnt(l.nome)}</span></label>`}).join('')}</div>`}).join('')}</div>
+    <div class="fl-f"><button class="btn sm primary" data-flok="1">Pronto</button></div></div>`;
 }
 function renderBell(){
   const list=avisos(),unread=list.filter(n=>!READ.has(n.k)).length;
@@ -139,7 +163,7 @@ function painel(){
   const tAc=soma(acordos,'valor_acordo'),tPago=soma(cob,'valor_pago');
   const cv=custasVis(),abertas=cv.filter(c=>!c.pago),venc=abertas.filter(c=>c.vencimento&&c.vencimento<HOJE);
   const at=atencao();
-  let h=`<div class="ph"><div><h1>${S.loja?esc(S.loja):'Visão geral'}</h1><p>${cob.length} cobranças e ${div.length} processos diversos</p></div><div class="ph-actions">${canJ?`<button class="btn primary" data-act="novo">${icon('plus')}Novo processo</button>`:''}</div></div>`;
+  let h=`<div class="ph"><div><h1>${filtroAtivo()?esc(filtroNome()):'Visão geral'}</h1><p>${cob.length} cobranças e ${div.length} processos diversos</p></div><div class="ph-actions">${canJ?`<button class="btn primary" data-act="novo">${icon('plus')}Novo processo</button>`:''}</div></div>`;
   const pa=pendAut();
   if(pa.length)h+=`<button class="strip warn" data-goaut="1">${icon('shield-check')}<span><b>${pa.length} ${pa.length===1?'cobrança aguardando':'cobranças aguardando'} sua autorização</b><small>Lançada${pa.length>1?'s':''} pelo jurídico e ainda fora dos totais</small></span><em>Ver${icon('chevron-right')}</em></button>`;
   const ap=audProx();
@@ -333,7 +357,7 @@ function camposForm(p,tipo){
   const dJ=canJ?'':'disabled';
   const f=(id,l,v,extra='',full)=>`<div class="fld ${full?'full':''}"><label for="p-${id}">${l}</label><input id="p-${id}" value="${esc(v??'')}" ${extra} ${dJ}></div>`;
   const stSel=`<div class="fld"><label for="p-status">Status</label><select id="p-status" ${dJ}>${opts([...(LISTAS.status[tipo]||[]),...(p.status&&!(LISTAS.status[tipo]||[]).includes(p.status)?[p.status]:[])],p.status||'','Sem status')}</select></div>`;
-  const lj=`<div class="fld"><label for="p-loja">Loja</label><select id="p-loja" ${dJ}>${lojaOpts(p.loja||(S.loja||''))}</select></div>`;
+  const lj=`<div class="fld"><label for="p-loja">Loja</label><select id="p-loja" ${dJ}>${lojaOpts(p.loja||(S.fl.lojas.length===1&&!S.fl.regs.length?S.fl.lojas[0]:''))}</select></div>`;
   if(tipo==='cobranca')return `${f('parte','Cliente',p.parte,'',true)}${lj}${stSel}${f('codigo_cliente','Código do cliente',p.codigo_cliente)}${f('documento','CNPJ / CPF',p.documento)}${f('numero','Nº do processo',p.numero)}${f('carteira','Carteira',p.carteira)}${f('ano','Ano',p.ano,'inputmode="numeric"')}${f('valor','Valor da dívida (R$)',numIn(p.valor),'inputmode="decimal"')}`;
   return `${f('numero','Nº do processo',p.numero)}<div class="fld"><label for="p-identificacao">Identificação</label><select id="p-identificacao" ${dJ}>${opts(LISTAS.identificacoes,p.identificacao||'','–')}</select></div>${f('parte','Parte',p.parte,'',true)}${f('tipo_acao','Tipo de ação',p.tipo_acao,'list="acoes"')}${lj}${f('uf','UF',p.uf,'maxlength="2"')}${f('ano','Ano',p.ano,'inputmode="numeric"')}${stSel}${f('valor','Valor da condenação (R$)',numIn(p.valor),'inputmode="decimal"')}<div class="fld full"><label for="p-teor">Teor do processo</label><textarea id="p-teor" ${dJ} style="min-height:60px">${esc(p.teor||'')}</textarea></div>
   <datalist id="acoes">${[...new Set(P.filter(x=>x.tipo_acao).map(x=>x.tipo_acao))].sort().map(a=>`<option value="${esc(a)}">`).join('')}</datalist>`;
@@ -468,7 +492,9 @@ function admBody(){
     if(!ADM.usuarios)return '<div class="loading" style="min-height:160px"><span class="spin"></span></div>';
     return `${apresCard()}<section class="card"><div class="card-h"><h2>Usuários</h2><span class="sub">cada pessoa entra com o próprio usuário; no primeiro acesso usa a senha padrão e cria a sua</span><div class="tools"><button class="btn sm primary" data-novo-user="1">${icon('user-plus')}Novo usuário</button></div></div><div class="tbl-wrap" style="padding-top:12px"><table><thead><tr><th>Nome</th><th>Usuário</th><th>Perfil</th><th>Lojas</th><th>Autoriza cobranças</th><th>Situação</th><th></th></tr></thead><tbody>${ADM.usuarios.map(u=>`<tr data-edit-user="${u.id}"><td><b style="font-weight:500">${esc(u.nome)}</b></td><td class="num">${esc(u.usuario)}</td><td>${esc(LISTAS.perfis[u.perfil]||u.perfil)}</td><td style="white-space:normal">${u.lojas.length?esc(u.lojas.join(', ')):'<span class="muted">Todas</span>'}</td><td>${u.autoriza?'<span class="cu paga">Sim</span>':'<span class="muted">Não</span>'}</td><td>${!u.ativo?'<span class="cu vencida">Desativado</span>':u.pendente?'<span class="cu proxima">Aguardando 1º acesso</span>':'<span class="cu paga">Ativo</span>'}</td><td class="r">${icon('chevron-right')}</td></tr>`).join('')}</tbody></table></div></section>`;
   }
-  if(S.adm==='lojas')return `<section class="card"><div class="card-h"><h2>Lojas</h2><span class="sub">${LOJAS.length} cadastradas</span></div><div class="card-b"><form id="f-loja" class="filters" style="padding:0 0 14px"><div class="fld" style="flex:1;min-width:160px"><input id="lj-nome" placeholder="Nome da loja"></div><div class="fld" style="width:80px"><input id="lj-uf" placeholder="UF" maxlength="2"></div><button class="btn primary">${icon('plus')}Adicionar</button></form><div class="lojas-chk" style="max-height:none">${LOJAS.map(l=>`<span>${esc(l.nome)}${l.uf?` <span class="tag">${esc(l.uf)}</span>`:''} <small class="muted">${P.filter(p=>p.loja===l.nome).length}</small></span>`).join('')}</div></div></section>`;
+  if(S.adm==='lojas'){const regs=LISTAS.regionais||[];const ro=r=>`<option value="">Sem regional</option>${regs.map(x=>`<option ${x===r?'selected':''}>${esc(x)}</option>`).join('')}`;
+    return `<section class="card"><div class="card-h"><h2>Lojas</h2><span class="sub">${LOJAS.length} cadastradas · ${LOJAS.filter(l=>!l.regional).length} sem regional</span></div><div class="card-b"><form id="f-loja" class="filters" style="padding:0 0 14px"><div class="fld" style="flex:1;min-width:160px"><input id="lj-nome" placeholder="Nome da loja"></div><div class="fld" style="width:80px"><input id="lj-uf" placeholder="UF" maxlength="2"></div><div class="fld" style="width:170px"><select id="lj-reg">${ro('')}</select></div><button class="btn primary">${icon('plus')}Adicionar</button></form>
+    <div class="tbl-wrap" style="padding:0"><table><thead><tr><th>Loja</th><th>UF</th><th>Regional</th><th class="r">Processos</th></tr></thead><tbody>${LOJAS.map(l=>`<tr style="cursor:default"><td><b style="font-weight:500">${esc(l.nome)}</b></td><td>${esc(l.uf||'–')}</td><td><select class="reg-sel ${l.regional?'':'falta'}" data-loja-reg="${l.id}" aria-label="Regional de ${esc(l.nome)}">${ro(l.regional)}</select></td><td class="r num">${P.filter(p=>p.loja===l.nome).length}</td></tr>`).join('')}</tbody></table></div></div></section>`}
   if(S.adm==='historico'){
     if(!ADM.historico)return '<div class="loading" style="min-height:160px"><span class="spin"></span></div>';
     const H=ADM.historico,F=ADM.hf||{usuario:'',q:''};
@@ -531,6 +557,11 @@ function confirma(el,txt){if(armado===el){armado=null;return true}if(armado){arm
 document.addEventListener('click',async e=>{
   const t=e.target.closest('button,a,tr,.t,.day,[data-open]');
   if(S.bell&&!e.target.closest('#bell')){S.bell=false;renderBell();drawIcons()}
+  if(S.flOpen&&!e.target.closest('#lojaSel')){S.flOpen=false;renderShell();drawIcons()}
+  {const f=e.target.closest('[data-flbtn],[data-flok],[data-flclear]');if(f){const d=f.dataset;
+    if(d.flbtn){S.flOpen=!S.flOpen;renderShell();drawIcons();return}
+    if(d.flok){S.flOpen=false;renderShell();drawIcons();return}
+    if(d.flclear){S.fl={lojas:[],regs:[]};salvaEstado();render();return}}}
   if(e.target.matches('.overlay')){closeLayer();return}
   if(!t)return;const d=t.dataset;
   if(d.close){closeLayer();return}
@@ -557,7 +588,7 @@ document.addEventListener('click',async e=>{
   if(d.today){S.cy=_t.getFullYear();S.cm=_t.getMonth();S.sel=HOJE;render();return}
   if(d.day){S.sel=d.day;render();return}
   if(d.gost!==undefined){S.page='cobranca';S.st=d.gost;S.q='';render();window.scrollTo(0,0);return}
-  if(d.golj!==undefined){S.page='cobranca';S.st='todos';S.loja=d.golj==='Sem loja'?'':d.golj;S.q='';salvaEstado();render();window.scrollTo(0,0);return}
+  if(d.golj!==undefined){S.page='cobranca';S.st='todos';S.fl=d.golj==='Sem loja'?{lojas:[],regs:[]}:{lojas:[d.golj],regs:[]};S.q='';salvaEstado();render();window.scrollTo(0,0);return}
   if(d.godiv!==undefined){S.page='diversos';S.st='todos';S.q=d.godiv==='Sem tipo'?'':d.godiv;render();window.scrollTo(0,0);return}
   if(d.graf){const [k,v]=d.graf.split(':');S.g[k]=v;salvaEstado();render();return}
   if(d.csv){exportarCSV(d.csv);return}
@@ -584,7 +615,10 @@ document.addEventListener('click',async e=>{
   if(t.id==='themeBtn'){const n=isDark()?'light':'dark';document.documentElement.dataset.theme=n;try{localStorage.setItem('bj-theme',n)}catch(er){}render();return}
 });
 document.addEventListener('change',e=>{
-  if(e.target.id==='loja'){S.loja=e.target.value;salvaEstado();render();return}
+  if(e.target.dataset.flreg!==undefined){const r=e.target.dataset.flreg;S.fl.regs=e.target.checked?[...S.fl.regs,r]:S.fl.regs.filter(x=>x!==r);
+    if(e.target.checked)S.fl.lojas=S.fl.lojas.filter(n=>lojaReg(n)!==r);salvaEstado();render();return}
+  if(e.target.dataset.flloja!==undefined){const n=e.target.dataset.flloja;S.fl.lojas=e.target.checked?[...S.fl.lojas,n]:S.fl.lojas.filter(x=>x!==n);salvaEstado();render();return}
+  if(e.target.dataset.lojaReg){api('/api/lojas/'+e.target.dataset.lojaReg,{method:'POST',body:{regional:e.target.value}}).then(()=>refresh(true)).then(()=>toast('Regional salva.')).catch(er=>toast(er.message));return}
   if(e.target.dataset.ord){S.ord=e.target.value;render();return}
 });
 let qT;
@@ -615,7 +649,7 @@ document.addEventListener('submit',async e=>{
       if(f.dataset.aid)await salvar(()=>api('/api/audiencias/'+f.dataset.aid,{method:'POST',body}),'Audiência alterada.');
       else await salvar(()=>api(`/api/processos/${f.dataset.pid}/audiencias`,{method:'POST',body}),'Audiência marcada.');
       openProc(+f.dataset.pid)}
-    if(f.id==='f-loja'){await salvar(()=>api('/api/lojas',{method:'POST',body:{nome:$('#lj-nome').value,uf:$('#lj-uf').value}}),'Loja adicionada.')}
+    if(f.id==='f-loja'){await salvar(()=>api('/api/lojas',{method:'POST',body:{nome:$('#lj-nome').value,uf:$('#lj-uf').value,regional:$('#lj-reg').value}}),'Loja adicionada.')}
     if(f.id==='f-imp'){const fd=new FormData();fd.append('arquivo',$('#imp-arq').files[0]);
       let r;try{r=await api('/api/importar',{method:'POST',body:fd})}catch(er){if(er.dados&&er.dados.confirmar&&confirm(er.message+' Continuar mesmo assim?')){fd.append('confirmar','sim');r=await api('/api/importar',{method:'POST',body:fd})}else throw er}
       $('#imp-res').innerHTML=`<div class="box ok" style="margin-top:14px">${icon('check')}${r.processos} processos, ${r.custas} custas e ${r.anexos} anexos importados.</div>${r.avisos.length?`<ul class="hint">${r.avisos.map(a=>`<li>${esc(a)}</li>`).join('')}</ul>`:''}`;drawIcons();await refresh(true)}
