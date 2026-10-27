@@ -135,6 +135,29 @@ def _preencher_regionais():
 _preencher_regionais()
 
 
+def _regionais_v2():
+    """Uma vez: troca a divisão antiga (da aba Base Gráfico) pela lista de regionais enviada pela Densul.
+    Loja que não está na lista nova e tinha regional antiga fica sem regional, para o admin escolher."""
+    from db import REGIONAIS_ANTIGAS
+    if config_ler("regionais_v2", ""):
+        return
+    with engine.begin() as c:
+        mudou = []
+        for r in c.execute(select(lojas.c.id, lojas.c.nome, lojas.c.regional)).all():
+            atual = r.regional or ""
+            nova = regional_da_loja(r.nome)
+            if not nova and atual not in REGIONAIS_ANTIGAS:
+                continue  # fora da lista e sem regional antiga: deixa como está
+            if nova != atual:
+                c.execute(update(lojas).where(lojas.c.id == r.id).values(regional=nova))
+                mudou.append(f"{r.nome}: {atual or 'sem regional'} > {nova or 'sem regional'}")
+        config_gravar(c, "regionais_v2", "1")
+        registrar(c, None, "Regionais das lojas atualizadas pela lista nova", detalhes={"lojas": len(mudou), "mudancas": mudou})
+
+
+_regionais_v2()
+
+
 # ---------- usuário logado ----------
 
 def _usuario(uid):

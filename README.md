@@ -69,7 +69,7 @@ o histórico só dele. Para isso funcionar, **cada pessoa precisa ter o próprio
 
 - O botão de lojas no topo abre o filtro: marque uma ou mais **regionais** e/ou uma ou mais **lojas**. Vale para Início,
   Cobrança, Diversos e Agenda, e fica salvo no navegador.
-- As regionais vieram da aba "Base Gráfico" da planilha. Cada loja tem a sua regional em **Administração > Lojas**,
+- As regionais vieram da lista "Regionais" enviada pela Densul (db.py, `REGIONAIS`). Cada loja tem a sua regional em **Administração > Lojas**,
   onde o administrador pode trocar (fica no histórico). Loja sem regional aparece em "Sem regional".
 
 ## Custas e avisos

@@ -183,75 +183,23 @@ TIPOS_CUSTA = ["Inicial", "Serviço", "Cartório", "Complementar", "Outra"]
 TIPOS_AUDIENCIA = ["Conciliação", "Instrução e julgamento", "Una", "Mediação", "Outra"]
 CATEGORIAS_ANEXO = ["Nota", "Boleto", "Comprovante", "Documento"]
 PERFIS = {"admin": "Administrador", "juridico": "Jurídico", "financeiro": "Financeiro"}
-# Regionais e suas lojas, como na aba "Base Gráfico" da planilha Jurídico (ordem da planilha)
+# Regionais e suas filiais, pela lista "Regionais" enviada pela Densul (out/2026)
 REGIONAIS = {
-    "Matriz": [
-        "Matriz",
-        "Aparecida",
-        "Gás"
-    ],
-    "Goiás": [
-        "Bueno",
-        "Castelo",
-        "Anápolis",
-        "Rio Verde"
-    ],
-    "PI / ES / RN": [
-        "Teresina",
-        "Mossoró",
-        "Serra"
-    ],
-    "PA": [
-        "Ananindeua",
-        "Castanhal",
-        "Santarém",
-        "Marabá",
-        "Redenção"
-    ],
-    "MG": [
-        "Uberlândia",
-        "Contagem"
-    ],
-    "MT / MS": [
-        "Rondonópolis",
-        "Confresa",
-        "Cuiabá",
-        "Barra do Garça",
-        "Sinop",
-        "Água Boa",
-        "Jiraya"
-    ],
-    "MA": [
-        "São Luis",
-        "Imperatriz",
-        "Balsas"
-    ],
-    "TO": [
-        "Palmas",
-        "Araguaína",
-        "Gurupi"
-    ],
-    "RJ": [
-        "Rio de Janeiro"
-    ],
-    "SUL": [
-        "Florianópolis",
-        "Foz",
-        "Bauru",
-        "Curitiba",
-        "Magnético"
-    ],
-    "AP": [
-        "Macapá"
-    ],
-    "Atacado": [
-        "Sparcould",
-        "Atacado"
-    ],
-    "Brasília": [
-        "Brasília"
-    ]
+    "Matriz": ["Matriz"],
+    "Regional GO / DF": ["Anápolis", "Brasília", "Bueno", "Castelo", "Rio Verde"],
+    "Kaique": ["Água Boa", "Campo Grande", "CD MT", "CD-MT", "Confresa", "Cuiabá", "Dourados", "JI Paraná", "Rondonópolis", "Sinop"],
+    "Renan": ["Ananindeua", "Castanhal", "Marabá", "Redenção", "Santarém"],
+    "Roni": ["Bauru", "Curitiba", "Florianópolis", "Foz", "Magnético"],
+    "Tertuliano": ["Contagem", "Uberlândia"],
+    "João Vitor": ["Mossoró", "Recife", "Salvador", "Serra", "Teresina"],
+    "Maranhão": ["Balsas", "Imperatriz", "São Luis"],
+    "Tocantins": ["Araguaína", "Gurupi", "Palmas"],
+    "Macapá": ["Macapá"],
+    "Rio de Janeiro": ["Rio de Janeiro"],
+    "Atacado": ["Atacado"],
+    "Sparcould": ["Sparcould"],
 }
+REGIONAIS_ANTIGAS = {"Goiás", "PI / ES / RN", "PA", "MG", "MT / MS", "MA", "TO", "RJ", "SUL", "AP", "Brasília"}
 
 
 def regional_da_loja(nome):
