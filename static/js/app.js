@@ -94,7 +94,7 @@ const parteNome=p=>p.parte||'(sem nome)';
 const TIPO_NOME={cobranca:'Cobrança',diversos:'Processos diversos'};
 
 /* ================= Casca ================= */
-const PAGES=[['painel','layout-dashboard','Início'],['cobranca','hand-coins','Cobrança'],['diversos','scale','Diversos'],['custas','calendar-clock','Agenda']];
+const PAGES=[['painel','layout-dashboard','Início'],['cobranca','hand-coins','Cobrança'],['diversos','scale','Diversos'],['custas','calendar-clock','Agenda']].filter(([k])=>!(isLeitura&&k==='diversos')); // apresentação não vê processos diversos
 const isDark=()=>{const t=document.documentElement.dataset.theme;return t?t==='dark':matchMedia('(prefers-color-scheme: dark)').matches};
 const READ_KEY='bj-lidos-'+ME.id;let READ=new Set();
 try{READ=new Set(JSON.parse(localStorage.getItem(READ_KEY)||'[]'))}catch(e){}
@@ -144,6 +144,7 @@ function render(){
   renderShell();
   if(!LOADED){$('#page').innerHTML=SYNC.err?`<div class="loading aviso"><div>${icon('plug-zap')}<h2>Sem conexão</h2><p>${esc(SYNC.err)}</p><button class="btn" data-refresh="1">${icon('refresh-cw')}Tentar de novo</button></div></div>`:`<div class="loading"><span class="spin"></span>Carregando...</div>`;drawIcons();return}
   PMreset();
+  if(isLeitura&&S.page==='diversos')S.page='painel';
   const PG={painel,cobranca:()=>lista('cobranca'),diversos:()=>lista('diversos'),custas:pgCustas,admin:pgAdmin};
   $('#page').innerHTML=(PG[S.page]||painel)();
   drawIcons();mountCharts();
@@ -163,7 +164,7 @@ function painel(){
   const tAc=soma(acordos,'valor_acordo'),tPago=soma(cob,'valor_pago');
   const cv=custasVis(),abertas=cv.filter(c=>!c.pago),venc=abertas.filter(c=>c.vencimento&&c.vencimento<HOJE);
   const at=atencao();
-  let h=`<div class="ph"><div><h1>${filtroAtivo()?esc(filtroNome()):'Visão geral'}</h1><p>${cob.length} cobranças e ${div.length} processos diversos</p></div><div class="ph-actions">${canJ?`<button class="btn primary" data-act="novo">${icon('plus')}Novo processo</button>`:''}</div></div>`;
+  let h=`<div class="ph"><div><h1>${filtroAtivo()?esc(filtroNome()):'Visão geral'}</h1><p>${isLeitura?`${cob.length} cobranças`:`${cob.length} cobranças e ${div.length} processos diversos`}</p></div><div class="ph-actions">${canJ?`<button class="btn primary" data-act="novo">${icon('plus')}Novo processo</button>`:''}</div></div>`;
   const pa=pendAut();
   if(pa.length)h+=`<button class="strip warn" data-goaut="1">${icon('shield-check')}<span><b>${pa.length} ${pa.length===1?'cobrança aguardando':'cobranças aguardando'} sua autorização</b><small>Lançada${pa.length>1?'s':''} pelo jurídico e ainda fora dos totais</small></span><em>Ver${icon('chevron-right')}</em></button>`;
   const ap=audProx();
@@ -192,9 +193,9 @@ function painel(){
     ${cardGraf('st','Cobrança por status','valor da dívida',rSt,{centro:'Todos os status',maxPie:9,maxBar:9,aria:'Valor em cobrança por status'})}
     ${cardGraf('lj','Cobrança por loja',`${rLj.length} lojas, maiores valores`,rLj,{centro:'Todas as lojas',outros:n=>`Outras ${n} lojas`,aria:'Valor em cobrança por loja'})}
   </div>
-  <div class="g2 g2-eq">
+  <div class="${isLeitura?'':'g2 g2-eq'}">
     <section class="card"><div class="card-h"><h2>Próximos dias</h2><span class="sub">custas e audiências</span><button class="link" data-page="custas">Agenda</button></div><div class="card-b">${proxCustas()}</div></section>
-    ${div.length?cardGraf('dv','Processos diversos',`${div.length} processos`,rDv,{centro:'Processos',cont:true,maxBar:7,outros:n=>`Outros ${n} tipos`,aria:'Processos diversos por tipo de ação'}):`<section class="card"><div class="card-h"><h2>Processos diversos</h2></div><div class="card-b"><p class="empty">Nenhum processo diverso.</p></div></section>`}
+    ${isLeitura?'':div.length?cardGraf('dv','Processos diversos',`${div.length} processos`,rDv,{centro:'Processos',cont:true,maxBar:7,outros:n=>`Outros ${n} tipos`,aria:'Processos diversos por tipo de ação'}):`<section class="card"><div class="card-h"><h2>Processos diversos</h2></div><div class="card-b"><p class="empty">Nenhum processo diverso.</p></div></section>`}
   </div>`;
   return h;
 }

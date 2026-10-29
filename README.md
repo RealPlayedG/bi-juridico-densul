@@ -53,7 +53,7 @@ o histórico só dele. Para isso funcionar, **cada pessoa precisa ter o próprio
 ## Link de apresentação (sem login)
 
 - Administração > Usuários > **Link de apresentação**: gera um link secreto para quem só vai ver o BI.
-- Quem abre não edita nada, não vê CPF/CNPJ nem anexos, e não vê cobranças aguardando autorização.
+- Quem abre não edita nada, não vê CPF/CNPJ nem anexos, não vê cobranças aguardando autorização e não vê Processos Diversos (só a Cobrança aparece).
 - No topo aparece o botão **Entrar**: quem tem usuário entra e continua logado por 30 dias naquele navegador. Abrindo o link de novo já logado, a pessoa continua com o próprio acesso (não cai para o modo visualização). É esse link que vai na intranet.
 - "Gerar link novo" faz o link anterior parar de funcionar na hora; "Desativar link" desliga. Cada abertura fica no histórico.
 

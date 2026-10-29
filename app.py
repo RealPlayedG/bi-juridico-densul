@@ -388,8 +388,8 @@ def _processo_visivel(conn, pid):
     f = _filtro_lojas(u)
     if f is not None:
         q = q.where(f)
-    if u["perfil"] == "leitura":  # a apresentação só mostra o que já foi autorizado
-        q = q.where(func.coalesce(processos.c.autorizacao, "") == "")
+    if u["perfil"] == "leitura":  # a apresentação só mostra cobranças já autorizadas (diversos ficam só para quem entra)
+        q = q.where(func.coalesce(processos.c.autorizacao, "") == "", processos.c.tipo == "cobranca")
     r = conn.execute(q).first()
     if not r:
         abort(404)
@@ -448,8 +448,8 @@ def api_dados():
         q = select(processos).where(processos.c.excluido.is_(False))
         if f is not None:
             q = q.where(f)
-        if u["perfil"] == "leitura":
-            q = q.where(func.coalesce(processos.c.autorizacao, "") == "")
+        if u["perfil"] == "leitura":  # apresentação: só cobranças autorizadas; processos diversos não aparecem
+            q = q.where(func.coalesce(processos.c.autorizacao, "") == "", processos.c.tipo == "cobranca")
         ps = [_mascarar(linha(r)) for r in c.execute(q.order_by(processos.c.id))]
         ids = {p["id"] for p in ps}
         # último andamento de cada processo
