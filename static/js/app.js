@@ -544,7 +544,8 @@ function openUser(u){
     <div class="fld"><label for="u-usuario">Usuário de acesso</label><input id="u-usuario" value="${esc(u.usuario||'')}" ${u.id?'disabled':''} placeholder="ex.: maria.silva" autocapitalize="none"></div>
     ${u.id?'':`<div class="fld full"><label for="u-senha">Senha do primeiro acesso <span class="muted">(opcional; vazio = senha padrão)</span></label><input id="u-senha" type="text" autocomplete="off" placeholder="mínimo 6 caracteres"><small class="muted">No primeiro acesso o sistema obriga a pessoa a criar a própria senha.</small></div>`}
     <div class="fld full"><label for="u-perfil">Perfil</label><select id="u-perfil">${Object.entries(LISTAS.perfis).map(([k,v])=>`<option value="${k}" ${u.perfil===k?'selected':''}>${v}</option>`).join('')}</select></div>
-    <div class="fld full"><label>Lojas que enxerga <span class="muted">(nenhuma marcada = todas)</span></label><div class="lojas-chk">${LOJAS.map(l=>`<label><input type="checkbox" name="u-loja" value="${esc(l.nome)}" ${u.lojas.includes(l.nome)?'checked':''}>${esc(l.nome)}</label>`).join('')}</div></div>
+    <div class="fld full"><label>Lojas que enxerga <span class="muted">(nenhuma marcada = todas)</span></label><div class="u-lojas">${[...(LISTAS.regionais||[]),SEM_REG].map(r=>{const doR=LOJAS.filter(l=>(l.regional||SEM_REG)===r);if(!doR.length)return '';const tudo=doR.every(l=>u.lojas.includes(l.nome));
+      return `<div class="u-grupo"><label class="u-reg"><input type="checkbox" data-ureg="${esc(r)}" ${tudo?'checked':''}>${esc(r)}</label>${doR.map(l=>`<label><input type="checkbox" name="u-loja" data-ureg-de="${esc(r)}" value="${esc(l.nome)}" ${u.lojas.includes(l.nome)?'checked':''}>${esc(l.nome)}</label>`).join('')}</div>`}).join('')}</div></div>
     <label class="check fld full"><input type="checkbox" id="u-autoriza" ${u.autoriza?'checked':''}>Autoriza cobranças novas lançadas pelo jurídico</label>
     ${u.id?`<label class="check fld full"><input type="checkbox" id="u-ativo" ${u.ativo?'checked':''}>Acesso ativo</label>`:''}
   </div><p class="hint">Jurídico: cadastra e edita processos, andamentos e custas. Financeiro: marca custas pagas, valor pago e conferência. Administrador: tudo, mais usuários e backups.</p></div>
@@ -616,6 +617,8 @@ document.addEventListener('click',async e=>{
   if(t.id==='themeBtn'){const n=isDark()?'light':'dark';document.documentElement.dataset.theme=n;try{localStorage.setItem('bj-theme',n)}catch(er){}render();return}
 });
 document.addEventListener('change',e=>{
+  if(e.target.dataset.ureg!==undefined){const r=e.target.dataset.ureg;document.querySelectorAll(`input[name="u-loja"]`).forEach(x=>{if(x.dataset.uregDe===r)x.checked=e.target.checked});return}
+  if(e.target.dataset.uregDe!==undefined){const r=e.target.dataset.uregDe,g=[...document.querySelectorAll('input[name="u-loja"]')].filter(x=>x.dataset.uregDe===r);const h=[...document.querySelectorAll('[data-ureg]')].find(x=>x.dataset.ureg===r);if(h)h.checked=g.every(x=>x.checked);return}
   if(e.target.dataset.flreg!==undefined){const r=e.target.dataset.flreg;S.fl.regs=e.target.checked?[...S.fl.regs,r]:S.fl.regs.filter(x=>x!==r);
     if(e.target.checked)S.fl.lojas=S.fl.lojas.filter(n=>lojaReg(n)!==r);salvaEstado();render();return}
   if(e.target.dataset.flloja!==undefined){const n=e.target.dataset.flloja;S.fl.lojas=e.target.checked?[...S.fl.lojas,n]:S.fl.lojas.filter(x=>x!==n);salvaEstado();render();return}
