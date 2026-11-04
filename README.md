@@ -81,7 +81,7 @@ o histórico só dele. Para isso funcionar, **cada pessoa precisa ter o próprio
 - O jurídico lança a custa dentro do processo (tipo, vencimento, valor, boleto).
 - Custas vencidas, vencendo hoje ou nos próximos 3 dias aparecem no sino, no Início e na aba Custas,
   para todo mundo que enxerga aquela loja (o financeiro de Ananindeua vê as de Ananindeua).
-- O financeiro marca como paga e anexa o comprovante.
+- O financeiro clica em **Marcar paga** e já pode anexar o comprovante na mesma hora (opcional; dá para anexar depois). Na Agenda, o botão abre o processo direto nessa custa.
 
 ## Backups
 

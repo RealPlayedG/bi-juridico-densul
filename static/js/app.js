@@ -391,7 +391,7 @@ function renderProc(p){
     <div class="cbox-a">${c.link&&!isLeitura?`<a href="${esc(c.link)}" target="_blank" rel="noopener">${icon('external-link')}Boleto (link)</a>`:''}${ax.map(a=>`<a href="${esc(a.url)}" target="_blank" rel="noopener">${icon(a.categoria==='Comprovante'?'badge-check':'file-text')}${esc(a.categoria)}: ${esc(a.nome)}</a>`).join('')}<span class="sp"></span>
       ${isLeitura?'':`<button class="btn sm" data-anexar-custa="${c.id}" data-cat="${c.pago?'Comprovante':'Boleto'}">${icon('paperclip')}${c.pago?'Comprovante':'Boleto'}</button>`}
       ${canJ&&!c.pago?`<button class="btn sm" data-edit-custa="${c.id}">${icon('pencil')}</button>`:''}
-      ${canF?(c.pago?`<button class="btn sm" data-despagar="${c.id}">Desfazer pagamento</button>`:`<button class="btn sm primary" data-pagar="${c.id}">${icon('check')}Marcar paga</button>`):''}</div></div>`}).join(''):'<p class="empty">Nenhuma custa lançada.</p>';
+      ${canF?(c.pago?`<button class="btn sm" data-despagar="${c.id}">Desfazer pagamento</button>`:`<button class="btn sm primary" data-pagar="${c.id}">${icon('check')}Marcar paga</button>`):''}</div><div id="pg-${c.id}"></div></div>`}).join(''):'<p class="empty">Nenhuma custa lançada.</p>';
   const audPill=a=>a.finalizada?`<span class="cu paga">Finalizada</span>`:`<span class="cu ${a.data<HOJE?'falta':a.data===HOJE?'hoje':a.data<=addDays(HOJE,3)?'proxima':'aud'}">${a.data<HOJE?'Falta finalizar':quando(a.data)}</span>`;
   const audH=p.audiencias.length?p.audiencias.map(a=>`<div class="cbox ${a.finalizada?'aud-ok':''}"><div class="cbox-h"><b>Audiência de ${esc(a.tipo.toLowerCase())}</b>${audPill(a)}<span class="v num">${brDate(a.data)}${audHora(a)}</span></div>
     ${a.local?`<div class="aud-local">${icon(/^https?:/i.test(a.local)?'video':'map-pin')}${linkOuTexto(a.local)}</div>`:''}${a.obs?`<small class="muted">${esc(a.obs)}</small>`:''}
@@ -479,6 +479,11 @@ function anexoForm(pid,cid,cat){
     <div class="fld full"><label for="a-link">Ou cole um link (Drive, site do tribunal...)</label><input id="a-link" placeholder="https://"></div>
   </div><div class="acts"><button type="button" class="btn" data-fechar-form="${alvo.slice(1)}">Cancelar</button><button class="btn primary">${icon('upload')}Enviar</button></div></form>`;
   drawIcons();
+}
+function pagarForm(cid){
+  document.querySelectorAll('[id^="pg-"]').forEach(x=>x.innerHTML='');const box=$('#pg-'+cid);if(!box)return;
+  box.innerHTML=`<form class="aud-fin" id="f-pagar" data-cid="${cid}"><label for="pg-arq">Comprovante de pagamento <span class="muted">opcional, pode anexar depois</span></label><input type="file" id="pg-arq" accept=".pdf,image/*"><div class="acts"><button type="button" class="btn sm" data-pg-cancel="1">Cancelar</button><button class="btn sm primary">${icon('check')}Confirmar pagamento</button></div></form>`;
+  drawIcons();box.scrollIntoView({block:'nearest',behavior:'smooth'});
 }
 async function enviarAnexo(pid,cid,cat,files,link){
   const fd=new FormData();[...(files||[])].forEach(f=>fd.append('arquivo',f));if(link)fd.append('link',link);fd.append('categoria',cat);if(cid)fd.append('custa_id',cid);
@@ -604,8 +609,10 @@ document.addEventListener('click',async e=>{
   if(d.act==='novo'){openNovo(d.tipo);return}
   if(d.novotipo){openNovo(d.novotipo);return}
   if(d.open){e.preventDefault();openProc(+d.open);return}
-  if(d.pagar){const c=C.find(x=>x.id===+d.pagar)||(window._P&&window._P.custas.find(x=>x.id===+d.pagar));if(!confirma(t,'Confirmar pagamento?'))return;
-    await salvar(()=>api(`/api/custas/${d.pagar}/pago`,{method:'POST',body:{pago:true}}),'Custa marcada como paga. Anexe o comprovante.');if(ABERTO)openProc(ABERTO);return}
+  if(d.pagar){const cid=+d.pagar,c=C.find(x=>x.id===cid)||(window._P&&window._P.custas.find(x=>x.id===cid));
+    if(!$('#pg-'+cid)){await openProc(c.processo_id)}  // na Agenda: abre o processo e mostra o formulário na custa
+    pagarForm(cid);return}
+  if(d.pgCancel){t.closest('form').remove();return}
   if(d.despagar){if(!confirma(t,'Desfazer?'))return;await salvar(()=>api(`/api/custas/${d.despagar}/pago`,{method:'POST',body:{pago:false}}),'Pagamento desfeito.');openProc(ABERTO);return}
   if(d.novaCusta){custaForm(+d.novaCusta);return}
   if(d.editCusta){custaForm(ABERTO,window._P.custas.find(x=>x.id===+d.editCusta));return}
@@ -656,6 +663,9 @@ document.addEventListener('submit',async e=>{
       await api('/api/usuarios',{method:'POST',body});toast(body.id?'Usuário salvo.':'Usuário criado. No primeiro acesso ele usa a senha padrão.');ADM.usuarios=null;closeLayer();carregaAdmin()}
     if(f.id==='f-hist'){ADM.hf={usuario:$('#h-quem').value,q:$('#h-q').value.trim()};ADM.historico=null;$('#adm').innerHTML=admBody();drawIcons();await carregaAdmin()}
     if(f.id==='f-rec'){const m=$('#rec-motivo').value.trim();if(!m){toast('Escreva o motivo.');return}await salvar(()=>api(`/api/processos/${f.dataset.id}/autorizacao`,{method:'POST',body:{decisao:'recusar',motivo:m}}),'Cobrança recusada.');openProc(+f.dataset.id)}
+    if(f.id==='f-pagar'){const cid=+f.dataset.cid,pid=window._P.id,arq=$('#pg-arq');const tem=arq&&arq.files.length;
+      f.querySelector('button.primary').disabled=true;
+      await salvar(async()=>{await api(`/api/custas/${cid}/pago`,{method:'POST',body:{pago:true}});if(tem)await enviarAnexo(pid,cid,'Comprovante',arq.files)},tem?'Custa paga, comprovante anexado.':'Custa marcada como paga.');openProc(pid);return}
     if(f.id==='f-finaud'){const obs=$('#fa-obs').value.trim();if(!obs){toast('Escreva como foi a audiência.');return}
       await salvar(()=>api(`/api/audiencias/${f.dataset.aid}/finalizar`,{method:'POST',body:{obs}}),'Audiência finalizada.');openProc(ABERTO);return}
     if(f.id==='f-aud'){const body={data:$('#au-data').value,hora:$('#au-hora').value,tipo:$('#au-tipo').value,local:$('#au-local').value,obs:$('#au-obs').value,andamento_id:+f.dataset.andamento||null};
