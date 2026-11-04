@@ -370,3 +370,28 @@ a.lk svg{width:13px;height:13px;flex:none}
 .tl li.aud::before{background:var(--nt)}
 .tag-aud{display:inline-flex;align-items:center;gap:3px;margin-left:6px;padding:1px 7px;border-radius:999px;font-size:10.5px;font-weight:600;background:var(--nt-soft);color:var(--nt);vertical-align:1px}
 .tag-aud svg{width:11px;height:11px}
+
+/* Pagamentos do cliente (entrada e parcelas) */
+.pg-h{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.pg-h b{font-size:13.5px;font-weight:600}
+.pg-h .btn{margin-left:auto}
+.pgs{display:flex;flex-direction:column;gap:8px}
+.pg-row{display:grid;grid-template-columns:86px minmax(0,1fr) auto auto auto;align-items:center;gap:10px;border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:13.5px}
+.pg-d{font-variant-numeric:tabular-nums;color:var(--ink)}
+.pg-t{display:flex;flex-direction:column;min-width:0}
+.pg-t small{font-size:11.5px}
+.pg-ax{display:flex;gap:6px;align-items:center}
+.pg-tot{display:flex;align-items:baseline;gap:10px;justify-content:flex-end;padding:2px 10px}
+.pg-tot span{font-size:13px;color:var(--muted)}
+.pg-tot b{font-size:15px}
+@media (max-width:600px){.pg-row{grid-template-columns:auto minmax(0,1fr) auto}.pg-ax{grid-column:1/-1}}
+
+/* Audiência de processo trabalhista: destaque forte */
+.cu.trab{display:inline-flex;align-items:center;gap:4px;background:var(--neg);color:#fff;font-weight:700;letter-spacing:.02em;text-transform:uppercase;font-size:10.5px}
+.cu.trab svg{width:12px;height:12px}
+.strip.trab{border-left-color:var(--neg);background:var(--neg-soft)} .strip.trab>svg.lucide{color:var(--neg)}
+.strip.trab b{color:var(--neg)}
+.is-trab .datebox{border-left-color:var(--neg)!important;background:var(--neg-soft)}
+.cbox.is-trab{border-color:var(--neg);box-shadow:0 0 0 1px var(--neg) inset}
+.ev.au.trab{background:var(--neg);color:#fff;font-weight:600}
+.dots i.au.trab{background:var(--neg)}

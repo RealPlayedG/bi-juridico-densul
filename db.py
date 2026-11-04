@@ -127,11 +127,24 @@ custas = Table(
     Column("excluido", Boolean, default=False),
 )
 
+pagamentos = Table(  # recebimentos do cliente (entrada, parcelas). A soma vai para processos.valor_pago
+    "pagamentos", meta,
+    Column("id", Integer, primary_key=True),
+    Column("processo_id", Integer, ForeignKey("processos.id"), nullable=False, index=True),
+    Column("data", Date),
+    Column("valor", Numeric(14, 2), nullable=False),
+    Column("descricao", String(120), default=""),           # Entrada, Parcela 1/5...
+    Column("criado_por", String(120), default=""),
+    Column("criado_em", DateTime, default=agora),
+    Column("excluido", Boolean, default=False),
+)
+
 anexos = Table(
     "anexos", meta,
     Column("id", Integer, primary_key=True),
     Column("processo_id", Integer, ForeignKey("processos.id"), nullable=False, index=True),
     Column("custa_id", Integer, ForeignKey("custas.id"), index=True),
+    Column("pagamento_id", Integer, index=True),             # comprovante de um pagamento do cliente
     Column("categoria", String(30), default="Documento"),   # Nota, Boleto, Comprovante, Documento
     Column("nome", String(255), default=""),
     Column("arquivo", String(255), default=""),             # nome do arquivo salvo no volume
@@ -227,6 +240,7 @@ COLUNAS_NOVAS = [  # (tabela, coluna, tipo SQL): criadas sozinhas na subida, em 
     ("processos", "autorizado_em", "TIMESTAMP"),
     ("processos", "motivo_recusa", "TEXT DEFAULT ''"),
     ("andamentos", "audiencia_id", "INTEGER"),
+    ("anexos", "pagamento_id", "INTEGER"),
     ("audiencias", "finalizada", "BOOLEAN DEFAULT FALSE"),
     ("audiencias", "finalizada_em", "TIMESTAMP"),
     ("audiencias", "finalizada_por", "VARCHAR(120) DEFAULT ''"),

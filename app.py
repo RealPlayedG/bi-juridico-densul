@@ -31,7 +31,7 @@ import backup  # noqa: E402
 import espelho  # noqa: E402
 from db import (REGIONAIS, regional_da_loja, CATEGORIAS_ANEXO, IDENTIFICACOES, PERFIS, STATUS, TIPOS_AUDIENCIA, TIPOS_CUSTA, agora, andamentos,  # noqa: E402
                 anexos, audiencias, config_gravar, config_ler, criar_tabelas, custas, engine, garantir_admin, historico, linha,
-                lojas, processos, registrar, usuarios)
+                lojas, pagamentos, processos, registrar, usuarios)
 from sqlalchemy import and_, func, insert, select, update  # noqa: E402
 
 app = Flask(__name__)
@@ -156,6 +156,32 @@ def _regionais_v2():
 
 
 _regionais_v2()
+
+
+def recalcular_pago(conn, pid):
+    """processos.valor_pago = soma dos pagamentos não excluídos (vazio se não houver nenhum)."""
+    tot = conn.execute(select(func.sum(pagamentos.c.valor)).where(pagamentos.c.processo_id == pid, pagamentos.c.excluido.is_(False))).scalar()
+    conn.execute(update(processos).where(processos.c.id == pid).values(valor_pago=round(float(tot), 2) if tot else None, atualizado_em=agora()))
+    return float(tot or 0)
+
+
+def _pagamentos_iniciais():
+    """Processo que já tinha valor pago (da planilha ou digitado) e nenhum pagamento lançado: esse valor vira o primeiro
+    pagamento, para a soma bater. Roda a cada subida, só pega quem nunca teve pagamento."""
+    with engine.begin() as c:
+        com = {r[0] for r in c.execute(select(pagamentos.c.processo_id).distinct())}
+        n = 0
+        for r in c.execute(select(processos.c.id, processos.c.valor_pago).where(processos.c.valor_pago > 0)).all():
+            if r.id in com:
+                continue
+            c.execute(insert(pagamentos).values(processo_id=r.id, data=None, valor=r.valor_pago, descricao="Valor pago lançado antes das parcelas",
+                                                criado_por="Sistema", criado_em=agora(), excluido=False))
+            n += 1
+        if n:
+            registrar(c, None, "Valores pagos anteriores viraram pagamentos", detalhes={"processos": n})
+
+
+_pagamentos_iniciais()
 
 
 # ---------- usuário logado ----------
@@ -491,6 +517,7 @@ def api_processo(pid):
         p["anexos"] = [linha(r) for r in c.execute(select(anexos).where(anexos.c.processo_id == pid, anexos.c.excluido.is_(False)).order_by(anexos.c.em.desc()))]
         p["historico"] = [linha(r) for r in c.execute(select(historico).where(historico.c.processo_id == pid).order_by(historico.c.id.desc()).limit(80))]
         p["audiencias"] = [linha(r) for r in c.execute(select(audiencias).where(audiencias.c.processo_id == pid, audiencias.c.excluido.is_(False)).order_by(audiencias.c.data, audiencias.c.hora))]
+        p["pagamentos"] = [linha(r) for r in c.execute(select(pagamentos).where(pagamentos.c.processo_id == pid, pagamentos.c.excluido.is_(False)).order_by(pagamentos.c.data.is_(None).desc(), pagamentos.c.data, pagamentos.c.id))]
     for a in p["anexos"]:
         a["url"] = a["link"] or f"/anexos/{a['id']}"
     if eu()["perfil"] == "leitura":  # apresentação: sem anexos, sem histórico e sem CPF/CNPJ
@@ -503,7 +530,7 @@ def api_processo(pid):
 
 CAMPOS_JURIDICO = {"tipo", "loja", "uf", "carteira", "ano", "codigo_cliente", "parte", "documento", "identificacao",
                    "tipo_acao", "numero", "status", "valor", "valor_acordo", "teor"}
-CAMPOS_FINANCEIRO = {"valor_pago", "conferido"}
+CAMPOS_FINANCEIRO = {"conferido"}  # valor pago agora é a soma dos pagamentos lançados
 NOMES = {"loja": "Loja", "uf": "UF", "carteira": "Carteira", "ano": "Ano", "codigo_cliente": "Código do cliente",
          "parte": "Cliente / parte", "documento": "CNPJ / CPF", "identificacao": "Identificação", "tipo_acao": "Tipo de ação",
          "numero": "Nº do processo", "status": "Status", "valor": "Valor", "valor_acordo": "Valor do acordo",
@@ -752,6 +779,60 @@ def api_excluir_custa(cid):
     return jsonify(ok=True)
 
 
+# ---------- pagamentos do cliente (entrada e parcelas) ----------
+
+@app.post("/api/processos/<int:pid>/pagamentos")
+@logado
+@so("editar_financeiro")
+def api_novo_pagamento(pid):
+    d = request.form if request.files or request.form else corpo()
+    try:
+        dia = _data(d.get("data"))
+        valor = round(float(str(d.get("valor", "")).replace(",", ".")), 2)
+    except (TypeError, ValueError):
+        return jsonify(erro="Valor inválido."), 400
+    if not dia:
+        return jsonify(erro="Informe a data do pagamento."), 400
+    if valor <= 0:
+        return jsonify(erro="O valor precisa ser maior que zero."), 400
+    desc = str(d.get("descricao", "")).strip()[:120]
+    arqs = [a for a in request.files.getlist("arquivo") if a and a.filename]
+    for a in arqs:
+        if os.path.splitext(a.filename)[1].lower() not in EXTENSOES:
+            return jsonify(erro=f'"{a.filename}": tipo de arquivo não aceito.'), 400
+    with engine.begin() as c:
+        _processo_visivel(c, pid)
+        gid = c.execute(insert(pagamentos).values(processo_id=pid, data=dia, valor=valor, descricao=desc, criado_por=eu()["nome"],
+                                                  criado_em=agora(), excluido=False)).inserted_primary_key[0]
+        marca = int(time.time())
+        for i, a in enumerate(arqs, start=1):
+            base, ext = os.path.splitext(a.filename)
+            nome = secure_filename(f"{pid}_{marca}_p{i}_{base[:60]}{ext.lower()}") or f"{pid}_{marca}_p{i}{ext.lower()}"
+            a.save(os.path.join(PASTA_ANEXOS, nome))
+            c.execute(insert(anexos).values(processo_id=pid, pagamento_id=gid, categoria="Comprovante", nome=a.filename[:255], arquivo=nome,
+                                            link="", por=eu()["nome"], em=agora(), excluido=False))
+        tot = recalcular_pago(c, pid)
+        registrar(c, eu(), "Pagamento lançado", pid, {"data": dia, "valor": valor, "descricao": desc, "comprovante": [a.filename for a in arqs] or None,
+                                                      "total_pago": tot})
+    return jsonify(id=gid, total_pago=tot)
+
+
+@app.delete("/api/pagamentos/<int:gid>")
+@logado
+@so("editar_financeiro")
+def api_excluir_pagamento(gid):
+    with engine.begin() as c:
+        r = c.execute(select(pagamentos).where(pagamentos.c.id == gid, pagamentos.c.excluido.is_(False))).first()
+        if not r:
+            abort(404)
+        g = linha(r)
+        _processo_visivel(c, g["processo_id"])
+        c.execute(update(pagamentos).where(pagamentos.c.id == gid).values(excluido=True))
+        tot = recalcular_pago(c, g["processo_id"])
+        registrar(c, eu(), "Pagamento excluído", g["processo_id"], {"data": g["data"], "valor": g["valor"], "descricao": g["descricao"], "total_pago": tot})
+    return jsonify(ok=True, total_pago=tot)
+
+
 # ---------- audiências ----------
 
 def _audiencia_dados(d):
@@ -869,6 +950,7 @@ def api_anexar(pid):
     link = request.form.get("link", "").strip()
     cat = request.form.get("categoria") if request.form.get("categoria") in CATEGORIAS_ANEXO else "Documento"
     cid = request.form.get("custa_id", type=int)
+    gid = request.form.get("pagamento_id", type=int)
     if not arqs and not link:
         return jsonify(erro="Escolha um arquivo ou cole um link."), 400
     if len(arqs) > 15:
@@ -884,15 +966,17 @@ def api_anexar(pid):
             cu = _custa(c, cid)
             if cu["processo_id"] != pid:
                 abort(404)
+        if gid and not c.execute(select(pagamentos.c.id).where(pagamentos.c.id == gid, pagamentos.c.processo_id == pid)).first():
+            abort(404)
         marca = int(time.time())
         for i, a in enumerate(arqs, start=1):
             base, ext = os.path.splitext(a.filename)
             nome = secure_filename(f"{pid}_{marca}_{i}_{base[:60]}{ext.lower()}") or f"{pid}_{marca}_{i}{ext.lower()}"
             a.save(os.path.join(PASTA_ANEXOS, nome))
-            c.execute(insert(anexos).values(processo_id=pid, custa_id=cid, categoria=cat, nome=a.filename[:255], arquivo=nome, link="",
+            c.execute(insert(anexos).values(processo_id=pid, custa_id=cid, pagamento_id=gid, categoria=cat, nome=a.filename[:255], arquivo=nome, link="",
                                             por=eu()["nome"], em=agora(), excluido=False))
         if link:
-            c.execute(insert(anexos).values(processo_id=pid, custa_id=cid, categoria=cat, nome=request.form.get("nome", "").strip()[:255] or "Link",
+            c.execute(insert(anexos).values(processo_id=pid, custa_id=cid, pagamento_id=gid, categoria=cat, nome=request.form.get("nome", "").strip()[:255] or "Link",
                                             arquivo="", link=link, por=eu()["nome"], em=agora(), excluido=False))
         registrar(c, eu(), "Anexo adicionado", pid, {"categoria": cat, "arquivos": [a.filename for a in arqs], "link": link or None})
     return jsonify(ok=True)

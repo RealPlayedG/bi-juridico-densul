@@ -21,7 +21,7 @@ from datetime import date, datetime
 import openpyxl
 from sqlalchemy import insert, select
 
-from db import agora, andamentos, anexos, custas, engine, lojas, processos, registrar
+from db import agora, andamentos, anexos, custas, engine, lojas, pagamentos, processos, registrar
 
 LOJA_CANONICA = {
     "agua boa": "Água Boa", "anapolis": "Anápolis", "ananindeua": "Ananindeua", "araguaina": "Araguaína",
@@ -222,6 +222,9 @@ def gravar(itens, quem, origem="planilha"):
             pid = conn.execute(insert(processos).values(**campos, criado_em=agora(), atualizado_em=agora(),
                                                         criado_por=f"Importação ({origem})", conferido=False, excluido=False)).inserted_primary_key[0]
             n["processos"] += 1
+            if campos.get("valor_pago"):  # o valor pago da planilha entra como um pagamento, para a soma das parcelas bater
+                conn.execute(insert(pagamentos).values(processo_id=pid, data=None, valor=campos["valor_pago"], descricao="Valor pago da planilha",
+                                                       criado_por="Importado da planilha", criado_em=agora(), excluido=False))
             if it["andamento"]:
                 conn.execute(insert(andamentos).values(processo_id=pid, texto=it["andamento"], por="Importado da planilha", em=agora()))
             if it.get("duplicado"):

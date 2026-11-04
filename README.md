@@ -62,6 +62,8 @@ o histórico só dele. Para isso funcionar, **cada pessoa precisa ter o próprio
 - Dentro do processo: **Nova audiência** (data, hora, tipo, local ou link, observação). Só o jurídico e o administrador marcam.
 - Aparecem na **Agenda** (lista e calendário, em roxo), no card "Próximos dias" do Início, e geram aviso no sino e no Início
   quando faltam 3 dias ou menos.
+- Audiência de processo **trabalhista** (tipo de ação "Trabalhista" ou nº CNJ da Justiça do Trabalho, ex.: 0000000-00.2026.5.18.0000)
+  tem destaque em vermelho no Início, no sino, na Agenda, no calendário e no processo, e avisa com 7 dias de antecedência (as outras, 3).
 - Link de reunião (Meet, Zoom, Teams) no campo local vira link clicável.
 - **Finalizar**: depois da audiência, o jurídico clica em Finalizar e escreve como foi. Esse texto entra no andamento do processo
   com a etiqueta "Audiência", e a audiência sai dos avisos e da lista de próximas. Audiência com data passada e não finalizada
@@ -75,6 +77,14 @@ o histórico só dele. Para isso funcionar, **cada pessoa precisa ter o próprio
   Cobrança, Diversos e Agenda, e fica salvo no navegador.
 - As regionais vieram da lista "Regionais" enviada pela Densul (db.py, `REGIONAIS`). Cada loja tem a sua regional em **Administração > Lojas**,
   onde o administrador pode trocar (fica no histórico). Loja sem regional aparece em "Sem regional".
+
+## Pagamentos do cliente (entrada e parcelas)
+
+- Dentro do processo, **Pagamentos do cliente > Lançar pagamento**: data, valor, descrição (Entrada, Parcela 1...) e comprovante.
+  Só o financeiro e o administrador lançam ou excluem.
+- O **Valor pago** do processo é a soma desses pagamentos e se atualiza sozinho (não é mais digitado à mão).
+- O valor pago que já existia antes (da planilha ou digitado) virou um primeiro pagamento "Valor pago lançado antes das parcelas".
+- Cada lançamento e exclusão fica no histórico com o novo total.
 
 ## Custas e avisos
 

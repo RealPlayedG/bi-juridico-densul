@@ -73,7 +73,12 @@ const audVis=()=>{PMreset();return AUD.filter(a=>{const p=proc(a.processo_id);re
 const audHora=a=>a.hora?' às '+a.hora:'';
 const linkOuTexto=t=>{t=String(t||'').trim();return /^https?:\/\/\S+$/i.test(t)?`<a href="${esc(t)}" target="_blank" rel="noopener" class="lk">${esc(t.replace(/^https?:\/\//,'').slice(0,60))}${icon('external-link')}</a>`:esc(t)};
 const audFut=()=>audVis().filter(a=>a.data>=HOJE&&!a.finalizada).sort((x,y)=>(x.data+x.hora).localeCompare(y.data+y.hora));
-const audProx=()=>audFut().filter(a=>a.data<=addDays(HOJE,3));
+// Trabalhista: tipo de ação "Trabalhista" ou nº CNJ da Justiça do Trabalho (segmento 5: NNNNNNN-DD.AAAA.5.TR.OOOO)
+const isTrab=p=>!!p&&(/trabalh/.test(norm(p.tipo_acao||''))||/^\d{7}-\d{2}\.\d{4}\.5\./.test(String(p.numero||'').trim()));
+const audTrab=a=>isTrab(proc(a.processo_id));
+const DIAS_TRAB=7; // trabalhista avisa com mais antecedência
+const audProx=()=>audFut().filter(a=>a.data<=addDays(HOJE,audTrab(a)?DIAS_TRAB:3));
+const trabTag=`<span class="cu trab">${icon('alert-octagon')}Trabalhista</span>`;
 const autPill=p=>p.autorizacao==='pendente'?'<span class="cu proxima">Aguardando autorização</span>':p.autorizacao==='recusada'?'<span class="cu vencida">Recusada</span>':'';
 function custaSt(c){
   if(c.pago)return 'paga';
@@ -117,7 +122,7 @@ function avisos(){
   if(!LOADED)return [];
   const out=[];
   pendAut().forEach(p=>out.push({k:`p${p.id}`,tipo:'pend',ic:'shield-check',cls:'rem',t:`Cobrança aguardando sua autorização`,sub:`${parteNome(p)} · ${p.loja||'sem loja'}`,pid:p.id,ord:'0'}));
-  audProx().forEach(a=>{const p=proc(a.processo_id);out.push({k:`a${a.id}-${a.data}-${a.hora}`,tipo:'aud',ic:'gavel',cls:a.data===HOJE?'late':'rem',t:`Audiência ${a.tipo.toLowerCase()} ${quando(a.data)}${audHora(a)}`,sub:`${parteNome(p)} · ${p.loja||'sem loja'}`,pid:p.id,ord:'1'+a.data+a.hora})});
+  audProx().forEach(a=>{const p=proc(a.processo_id),tr=isTrab(p);out.push({k:`a${a.id}-${a.data}-${a.hora}`,tipo:'aud',ic:tr?'alert-octagon':'gavel',cls:tr||a.data===HOJE?'late':'rem',t:`${tr?'TRABALHISTA: ':''}Audiência ${a.tipo.toLowerCase()} ${quando(a.data)}${audHora(a)}`,sub:`${parteNome(p)} · ${p.loja||'sem loja'}`,pid:p.id,ord:(tr?'0':'1')+a.data+a.hora})});
   atencao().forEach(c=>{const p=proc(c.processo_id),st=custaSt(c);out.push({k:`c${c.id}-${c.vencimento}`,tipo:'cus',ic:st==='proxima'?'calendar-clock':'alert-triangle',cls:st==='proxima'?'rem':'late',t:`Custa ${c.tipo.toLowerCase()} ${st==='vencida'?'vencida em '+brDate(c.vencimento):'vence '+quando(c.vencimento)}${c.valor?' · '+fmt(c.valor):''}`,sub:`${parteNome(p)} · ${p.loja||'sem loja'}`,pid:p.id,ord:'2'+c.vencimento})});
   return out;
 }
@@ -168,7 +173,9 @@ function painel(){
   let h=`<div class="ph"><div><h1>${filtroAtivo()?esc(filtroNome()):'Visão geral'}</h1><p>${isLeitura?`${cob.length} cobranças`:`${cob.length} cobranças e ${div.length} processos diversos`}</p></div><div class="ph-actions">${canJ?`<button class="btn primary" data-act="novo">${icon('plus')}Novo processo</button>`:''}</div></div>`;
   const pa=pendAut();
   if(pa.length)h+=`<button class="strip warn" data-goaut="1">${icon('shield-check')}<span><b>${pa.length} ${pa.length===1?'cobrança aguardando':'cobranças aguardando'} sua autorização</b><small>Lançada${pa.length>1?'s':''} pelo jurídico e ainda fora dos totais</small></span><em>Ver${icon('chevron-right')}</em></button>`;
-  const ap=audProx();
+  const apT=audProx().filter(audTrab);
+  if(apT.length){const a=apT[0],pp=proc(a.processo_id);h+=`<button class="strip trab" data-page="custas" data-cfgo="aud">${icon('alert-octagon')}<span><b>${apT.length===1?'Audiência trabalhista':apT.length+' audiências trabalhistas'} ${apT.length===1?quando(a.data)+audHora(a):'nos próximos '+DIAS_TRAB+' dias'}</b><small>${esc(parteNome(pp))} · ${esc(pp.loja||'sem loja')}${apT.length>1?' · próxima '+quando(a.data)+audHora(a):''}</small></span><em>Ver agenda${icon('chevron-right')}</em></button>`}
+  const ap=audProx().filter(a=>!audTrab(a));
   if(ap.length){const a=ap[0],pp=proc(a.processo_id);h+=`<button class="strip aud" data-page="custas" data-cfgo="aud">${icon('gavel')}<span><b>${ap.length} ${ap.length===1?'audiência':'audiências'} nos próximos 3 dias</b><small>Próxima: ${esc(parteNome(pp))}, ${quando(a.data)}${audHora(a)}</small></span><em>Ver agenda${icon('chevron-right')}</em></button>`}
   if(at.length){const nv=at.filter(c=>['vencida','hoje'].includes(custaSt(c))).length,nl=at.length-nv;
     h+=`<button class="strip ${nv?'neg':'warn'}" data-page="custas" data-cfgo="atencao">${icon(nv?'alert-triangle':'calendar-clock')}<span><b>${nv?`${nv} ${nv===1?'custa vencida':'custas vencidas'}`:''}${nv&&nl?' e ':''}${nl?`${nl} vencendo nos próximos 3 dias`:''}</b><small>Mais antiga: ${esc(parteNome(proc(at[0].processo_id)))}, ${brDate(at[0].vencimento)}</small></span><em>Ver custas${icon('chevron-right')}</em></button>`}
@@ -233,10 +240,10 @@ function proxCustas(){
   return l.length?`<div class="ulist">${l.map(x=>x.h).join('')}</div>`:'<p class="empty">Nada marcado para os próximos dias.</p>';
 }
 function aRow(a,compacto){
-  const p=proc(a.processo_id),d=dParts(a.data),hoje=a.data===HOJE;
+  const p=proc(a.processo_id),d=dParts(a.data),hoje=a.data===HOJE,tr=isTrab(p);
   const pill=`<span class="cu ${hoje?'hoje':a.data<=addDays(HOJE,3)?'proxima':'aud'}">${hoje?'Hoje':'Audiência '+quando(a.data)}${audHora(a)}</span>`;
-  if(compacto)return `<div class="urow clickable is-aud" data-open="${p.id}"><div class="datebox">${`<b>${d.d}</b><small>${MES3[d.m]}</small>`}</div><div class="t"><b>${esc(parteNome(p))}</b><small>Audiência de ${esc(a.tipo.toLowerCase())} · ${esc(p.loja||'sem loja')} ${pill}</small></div><div class="v num">${a.hora||''}</div></div>`;
-  return `<div class="crow is-aud"><div class="datebox"><b>${d.d}</b><small>${MES3[d.m]}</small></div><div class="t" data-open="${p.id}"><b>${esc(parteNome(p))}</b><small>Audiência de ${esc(a.tipo.toLowerCase())}${a.local?' · '+linkOuTexto(a.local):''} · ${esc(p.loja||'sem loja')} ${pill}</small></div><div class="v num">${a.hora||''}</div><div class="acts"><button class="btn sm" data-open="${p.id}">${icon('folder-open')}Abrir processo</button></div></div>`;
+  if(compacto)return `<div class="urow clickable is-aud${tr?' is-trab':''}" data-open="${p.id}"><div class="datebox">${`<b>${d.d}</b><small>${MES3[d.m]}</small>`}</div><div class="t"><b>${esc(parteNome(p))}</b><small>Audiência de ${esc(a.tipo.toLowerCase())} · ${esc(p.loja||'sem loja')} ${tr?trabTag:''}${pill}</small></div><div class="v num">${a.hora||''}</div></div>`;
+  return `<div class="crow is-aud${tr?' is-trab':''}"><div class="datebox"><b>${d.d}</b><small>${MES3[d.m]}</small></div><div class="t" data-open="${p.id}"><b>${esc(parteNome(p))}</b><small>Audiência de ${esc(a.tipo.toLowerCase())}${a.local?' · '+linkOuTexto(a.local):''} · ${esc(p.loja||'sem loja')} ${tr?trabTag:''}${pill}</small></div><div class="v num">${a.hora||''}</div><div class="acts"><button class="btn sm" data-open="${p.id}">${icon('folder-open')}Abrir processo</button></div></div>`;
 }
 function cRow(c,compacto){
   const p=proc(c.processo_id),d=c.vencimento?dParts(c.vencimento):null;
@@ -332,8 +339,8 @@ function pgCustas(){
       const t=new Date(S.cy,S.cm,1-start+i),d=ymd(t.getFullYear(),t.getMonth(),t.getDate()),out=t.getMonth()!==S.cm;
       const its=cv.filter(c=>c.vencimento===d),aus=av.filter(a=>a.data===d);
       const k=c=>c.pago?'cp':(['vencida','hoje'].includes(custaSt(c))?'cv':'ca');
-      const items=[...aus.map(a=>`<span class="ev au">${a.hora?a.hora+' ':''}${esc(parteNome(proc(a.processo_id)))}</span>`),...its.map(c=>`<span class="ev ${k(c)}">${esc(parteNome(proc(c.processo_id)))}</span>`)];
-      const dots=[...aus.map(()=>'<i class="au"></i>'),...its.map(c=>`<i class="${k(c)}"></i>`)].slice(0,6).join('');
+      const items=[...aus.map(a=>`<span class="ev au${audTrab(a)?' trab':''}">${a.hora?a.hora+' ':''}${esc(parteNome(proc(a.processo_id)))}</span>`),...its.map(c=>`<span class="ev ${k(c)}">${esc(parteNome(proc(c.processo_id)))}</span>`)];
+      const dots=[...aus.map(a=>`<i class="au${audTrab(a)?' trab':''}"></i>`),...its.map(c=>`<i class="${k(c)}"></i>`)].slice(0,6).join('');
       g+=`<button class="day ${out?'out':''} ${d===HOJE?'today':''} ${d===S.sel?'sel':''}" data-day="${d}" aria-label="${t.getDate()} de ${MES[t.getMonth()]}"><span class="n">${t.getDate()}</span>${items.slice(0,3).join('')}${items.length>3?`<span class="more">+${items.length-3}</span>`:''}<span class="dots">${dots}</span></button>`;
     }
     const sel=cv.filter(c=>c.vencimento===S.sel),selA=av.filter(a=>a.data===S.sel).sort((x,y)=>(x.hora||'').localeCompare(y.hora||'')),p=dParts(S.sel||HOJE);
@@ -341,7 +348,7 @@ function pgCustas(){
     <div class="cal"><section class="card" style="overflow:hidden"><div class="cal-grid">${g}</div></section><section class="card"><div class="card-h"><h2>${S.sel===HOJE?'Hoje, ':''}${p.d} de ${MES[p.m]}</h2></div><div class="card-b">${sel.length||selA.length?`<div class="ulist">${selA.map(a=>aRow(a)).join('')}${sel.map(c=>cRow(c)).join('')}</div>`:'<p class="empty">Nada neste dia.</p>'}</div></section></div>`;
   }
   const semData=cv.filter(c=>!c.vencimento&&!c.pago).length;
-  const sugH=canJ&&SUG.length?`<section class="card sug"><div class="card-h"><h2>${icon('sparkles')}Audiências encontradas nos andamentos</h2><span class="sub">confira e adicione na agenda com um clique</span></div><div class="card-b"><div class="ulist">${SUG.filter(x=>{const pp=proc(x.processo_id);return pp&&vis(pp)}).map(x=>{const pp=proc(x.processo_id),d=dParts(x.data);return `<div class="crow is-aud"><div class="datebox"><b>${d.d}</b><small>${MES3[d.m]}</small></div><div class="t" data-open="${pp.id}"><b>${esc(parteNome(pp))}</b><small>${esc(x.tipo)}${x.hora?' às '+x.hora:''} · ${esc(pp.loja||'sem loja')}</small><small class="trecho">"...${esc(x.trecho)}..."</small></div><div class="v"></div><div class="acts"><button class="btn sm" data-sug-ign="${x.andamento_id}">Ignorar</button><button class="btn sm primary" data-sug-add="${x.andamento_id}">${icon('plus')}Adicionar</button></div></div>`}).join('')}</div></div></section>`:'';
+  const sugH=canJ&&SUG.length?`<section class="card sug"><div class="card-h"><h2>${icon('sparkles')}Audiências encontradas nos andamentos</h2><span class="sub">confira e adicione na agenda com um clique</span></div><div class="card-b"><div class="ulist">${SUG.filter(x=>{const pp=proc(x.processo_id);return pp&&vis(pp)}).map(x=>{const pp=proc(x.processo_id),d=dParts(x.data);return `<div class="crow is-aud${tr?' is-trab':''}"><div class="datebox"><b>${d.d}</b><small>${MES3[d.m]}</small></div><div class="t" data-open="${pp.id}"><b>${esc(parteNome(pp))}</b><small>${esc(x.tipo)}${x.hora?' às '+x.hora:''} · ${esc(pp.loja||'sem loja')}</small><small class="trecho">"...${esc(x.trecho)}..."</small></div><div class="v"></div><div class="acts"><button class="btn sm" data-sug-ign="${x.andamento_id}">Ignorar</button><button class="btn sm primary" data-sug-add="${x.andamento_id}">${icon('plus')}Adicionar</button></div></div>`}).join('')}</div></div></section>`:'';
   return `<div class="ph"><div><h1>Agenda</h1><p>${af.length} ${af.length===1?'audiência marcada':'audiências marcadas'} · ${grupos.abertas.length} custas a pagar${semData?` · ${semData} sem vencimento`:''}</p></div><div class="ph-actions">${S.cv==='mes'?`<div class="monthnav"><button data-mnav="-1" aria-label="Mês anterior">${icon('chevron-left')}</button><span>${MES[S.cm]} ${S.cy}</span><button data-mnav="1" aria-label="Próximo mês">${icon('chevron-right')}</button></div><button class="btn" data-today="1">Hoje</button>`:''}</div></div>${sugH}${tools}${body}
   <p class="hint">${canJ?'Para lançar uma custa ou marcar uma audiência, abra o processo. ':''}${canF?'Ao pagar, anexe o comprovante dentro do processo.':''}</p>`;
 }
@@ -393,7 +400,7 @@ function renderProc(p){
       ${canJ&&!c.pago?`<button class="btn sm" data-edit-custa="${c.id}">${icon('pencil')}</button>`:''}
       ${canF?(c.pago?`<button class="btn sm" data-despagar="${c.id}">Desfazer pagamento</button>`:`<button class="btn sm primary" data-pagar="${c.id}">${icon('check')}Marcar paga</button>`):''}</div><div id="pg-${c.id}"></div></div>`}).join(''):'<p class="empty">Nenhuma custa lançada.</p>';
   const audPill=a=>a.finalizada?`<span class="cu paga">Finalizada</span>`:`<span class="cu ${a.data<HOJE?'falta':a.data===HOJE?'hoje':a.data<=addDays(HOJE,3)?'proxima':'aud'}">${a.data<HOJE?'Falta finalizar':quando(a.data)}</span>`;
-  const audH=p.audiencias.length?p.audiencias.map(a=>`<div class="cbox ${a.finalizada?'aud-ok':''}"><div class="cbox-h"><b>Audiência de ${esc(a.tipo.toLowerCase())}</b>${audPill(a)}<span class="v num">${brDate(a.data)}${audHora(a)}</span></div>
+  const audH=p.audiencias.length?p.audiencias.map(a=>`<div class="cbox ${a.finalizada?'aud-ok':''} ${isTrab(p)&&!a.finalizada?'is-trab':''}"><div class="cbox-h"><b>Audiência de ${esc(a.tipo.toLowerCase())}</b>${isTrab(p)?trabTag:''}${audPill(a)}<span class="v num">${brDate(a.data)}${audHora(a)}</span></div>
     ${a.local?`<div class="aud-local">${icon(/^https?:/i.test(a.local)?'video':'map-pin')}${linkOuTexto(a.local)}</div>`:''}${a.obs?`<small class="muted">${esc(a.obs)}</small>`:''}
     ${a.finalizada?`<div class="aud-res"><small>Finalizada por ${esc(a.finalizada_por)} em ${brDT(a.finalizada_em)}</small>${esc(a.resultado)}</div>`:''}
     <div id="aud-fin-${a.id}"></div>
@@ -401,7 +408,12 @@ function renderProc(p){
   const autH=p.autorizacao==='pendente'?`<div class="box miss aut-box">${icon('shield-alert')}<span><b>Aguardando autorização.</b> Esta cobrança ainda não entra nos totais.</span>${canAutorizar?`<span class="aut-acts"><button class="btn sm" data-recusar="${p.id}">${icon('x')}Recusar</button><button class="btn sm primary" data-autorizar="${p.id}">${icon('check')}Autorizar</button></span>`:''}</div><div id="rec-form"></div>`
     :p.autorizacao==='recusada'?`<div class="box aut-box rec">${icon('ban')}<span><b>Recusada por ${esc(p.autorizado_por)}</b> em ${brDT(p.autorizado_em)}${p.motivo_recusa?`: ${esc(p.motivo_recusa)}`:''}</span>${canJ?`<span class="aut-acts"><button class="btn sm" data-reenviar="${p.id}">${icon('send')}Reenviar para autorização</button></span>`:''}</div>`
     :p.autorizado_por&&p.tipo==='cobranca'?`<p class="hint aut-ok">${icon('shield-check')}Autorizada por ${esc(p.autorizado_por)} em ${brDT(p.autorizado_em)}</p>`:'';
-  const anxs=p.anexos.filter(a=>!a.custa_id);
+  const anxs=p.anexos.filter(a=>!a.custa_id&&!a.pagamento_id);
+  const pgs=p.pagamentos||[],totPg=pgs.reduce((x,g)=>x+(Number(g.valor)||0),0);
+  const pagH=`<div class="pgs">${pgs.length?pgs.map(g=>{const ax=p.anexos.filter(a=>a.pagamento_id===g.id);
+    return `<div class="pg-row"><span class="pg-d">${g.data?brDate(g.data):'<span class="muted">sem data</span>'}</span><span class="pg-t">${esc(g.descricao||'Pagamento')}<small class="muted">lançado por ${esc(g.criado_por)}</small></span><span class="pg-ax">${ax.map(a=>`<a href="${esc(a.url)}" target="_blank" rel="noopener" class="lk">${icon('badge-check')}Comprovante</a>`).join(' ')}${canF&&!ax.length?`<label class="btn sm" title="Anexar comprovante">${icon('paperclip')}Comprovante<input type="file" hidden accept=".pdf,image/*" data-pag-arq="${g.id}"></label>`:''}</span><b class="num pos">${fmt(g.valor)}</b>${canF?`<button class="btn sm" data-del-pag="${g.id}" title="Excluir pagamento">${icon('trash-2')}</button>`:''}</div>`}).join(''):'<p class="empty">Nenhum pagamento lançado.</p>'}
+    ${pgs.length?`<div class="pg-tot"><span>Total pago</span><b class="num pos">${fmt(totPg)}</b>${p.valor_acordo?`<small class="muted">${aRec>0?'falta '+fmt(aRec)+' do acordo':'acordo quitado'}</small>`:''}</div>`:''}
+    <div id="pag-form"></div></div>`;
   const anexH=anxs.length?`<ul class="anx-list">${anxs.map(a=>`<li><a href="${esc(a.url)}" target="_blank" rel="noopener">${icon(a.link?'external-link':'file')}<span>${esc(a.categoria)}: ${esc(a.nome)}</span><small class="muted">${esc(a.por)} · ${brDate(a.em)}</small></a>${a.por===ME.nome||isAdmin?`<button class="anx-del" data-del-anexo="${a.id}" title="Remover">${icon('trash-2')}</button>`:''}</li>`).join('')}</ul>`:'<p class="empty">Nenhum anexo.</p>';
   const hist=p.historico.map(h=>{const det=h.detalhes?fmtDet(h.detalhes):'';return `<div><b>${esc(h.acao)}</b> · ${esc(h.nome)} (${esc(h.usuario)}) · ${brDT(h.em)}${det?`<br><span style="white-space:pre-wrap">${esc(det)}</span>`:''}</div>`}).join('')||'Sem registros.';
   openLayer(`<div class="m-h"><div style="min-width:0"><h2 style="overflow:hidden;text-overflow:ellipsis">${esc(parteNome(p))}</h2><small class="muted">${TIPO_NOME[tipo]} · ${p.numero?esc(p.numero):'sem nº de processo'}</small></div><button class="x" data-close="1" aria-label="Fechar">${icon('x')}</button></div>
@@ -420,11 +432,15 @@ function renderProc(p){
       <div class="sec-h" style="margin-top:6px"><h3>${icon('wallet')}Valores</h3></div>
       <div class="frm">
         <div class="fld"><label for="p-valor_acordo">Valor do acordo (R$)</label><input id="p-valor_acordo" inputmode="decimal" value="${numIn(p.valor_acordo)}" ${canJ?'':'disabled'}></div>
-        <div class="fld"><label for="p-valor_pago">Valor pago (R$) ${canF||isLeitura?'':`<span class="lock">${icon('lock')}financeiro</span>`}</label><input id="p-valor_pago" inputmode="decimal" value="${numIn(p.valor_pago)}" ${canF?'':'disabled'}></div>
+        <div class="fld"><label>Valor pago (R$) <span class="muted">soma dos pagamentos</span></label><input value="${p.valor_pago?fmt(p.valor_pago):''}" disabled placeholder="Nenhum pagamento"></div>
         <label class="check fld full"><input type="checkbox" id="p-conferido" ${p.conferido?'checked':''} ${canF?'':'disabled'}>Recebimento conferido pelo financeiro${p.conferido?` <span class="muted">(${esc(p.conferido_por)}, ${brDT(p.conferido_em)})</span>`:''}</label>
       </div>
       ${canJ||canF?`<div class="acts" style="display:flex;justify-content:flex-end;gap:8px">${canJ?`<button type="button" class="btn danger" data-excluir="${p.id}">${icon('trash-2')}Excluir</button>`:''}<button class="btn primary" type="submit">${icon('check')}Salvar alterações</button></div>`:''}
     </form>
+    ${tipo==='cobranca'||pgs.length?`<div class="sec">
+      <div class="sec-h"><h3>${icon('hand-coins')}Pagamentos do cliente</h3><span class="muted" style="font-size:12.5px">entrada e parcelas</span>${canF?`<button class="btn sm" style="margin-left:auto" data-novo-pag="${p.id}">${icon('plus')}Lançar pagamento</button>`:''}</div>
+      ${pagH}
+    </div>`:''}
     <div class="sec">
       <div class="sec-h"><h3>${icon('list')}Andamento</h3></div>
       ${canJ?`<form id="f-and" data-id="${p.id}" class="reply" style="border:0;padding:0"><textarea id="and-t" placeholder="O que aconteceu no processo?"></textarea><button class="btn primary" aria-label="Adicionar andamento">${icon('send')}</button></form>`:''}
@@ -618,6 +634,13 @@ document.addEventListener('click',async e=>{
   if(d.editCusta){custaForm(ABERTO,window._P.custas.find(x=>x.id===+d.editCusta));return}
   if(d.delCusta){if(!confirma(t,'Excluir mesmo?'))return;await salvar(()=>api('/api/custas/'+d.delCusta,{method:'DELETE'}),'Custa excluída.');openProc(ABERTO);return}
   if(d.anexar){anexoForm(+d.anexar);return}
+  if(d.novoPag){const n=(window._P.pagamentos||[]).length;$('#pag-form').innerHTML=`<form class="aud-fin" id="f-pag" data-pid="${d.novoPag}"><div class="frm">
+      <div class="fld"><label for="pg-data">Data do pagamento</label><input type="date" id="pg-data" value="${HOJE}" required></div>
+      <div class="fld"><label for="pg-valor">Valor (R$)</label><input id="pg-valor" inputmode="decimal" required placeholder="0,00"></div>
+      <div class="fld"><label for="pg-desc">Descrição</label><input id="pg-desc" maxlength="120" value="${n?'Parcela '+n:'Entrada'}" placeholder="Entrada, Parcela 1/5..."></div>
+      <div class="fld"><label for="pg-comp">Comprovante <span class="muted">opcional</span></label><input type="file" id="pg-comp" accept=".pdf,image/*"></div></div>
+      <div class="acts"><button type="button" class="btn sm" data-pg-cancel="1">Cancelar</button><button class="btn sm primary">${icon('check')}Lançar pagamento</button></div></form>`;drawIcons();$('#pg-valor').focus();return}
+  if(d.delPag){if(!confirma(t,icon('check')))return;await salvar(()=>api('/api/pagamentos/'+d.delPag,{method:'DELETE'}),'Pagamento excluído.');openProc(ABERTO);return}
   if(d.anexarCusta){anexoForm(ABERTO,+d.anexarCusta,d.cat);return}
   if(d.fecharForm){$('#'+d.fecharForm).innerHTML='';return}
   if(d.delAnexo){if(!confirma(t,icon('check')))return;await salvar(()=>api('/api/anexos/'+d.delAnexo,{method:'DELETE'}),'Anexo removido.');openProc(ABERTO);return}
@@ -631,6 +654,8 @@ document.addEventListener('click',async e=>{
   if(t.id==='themeBtn'){const n=isDark()?'light':'dark';document.documentElement.dataset.theme=n;try{localStorage.setItem('bj-theme',n)}catch(er){}render();return}
 });
 document.addEventListener('change',e=>{
+  if(e.target.dataset.pagArq){const fd=new FormData();[...e.target.files].forEach(x=>fd.append('arquivo',x));fd.append('categoria','Comprovante');fd.append('pagamento_id',e.target.dataset.pagArq);
+    salvar(()=>api(`/api/processos/${ABERTO}/anexos`,{method:'POST',body:fd}),'Comprovante anexado.').then(()=>openProc(ABERTO)).catch(()=>{});return}
   if(e.target.dataset.ureg!==undefined){const r=e.target.dataset.ureg;document.querySelectorAll(`input[name="u-loja"]`).forEach(x=>{if(x.dataset.uregDe===r)x.checked=e.target.checked});return}
   if(e.target.dataset.uregDe!==undefined){const r=e.target.dataset.uregDe,g=[...document.querySelectorAll('input[name="u-loja"]')].filter(x=>x.dataset.uregDe===r);const h=[...document.querySelectorAll('[data-ureg]')].find(x=>x.dataset.ureg===r);if(h)h.checked=g.every(x=>x.checked);return}
   if(e.target.dataset.flreg!==undefined){const r=e.target.dataset.flreg;S.fl.regs=e.target.checked?[...S.fl.regs,r]:S.fl.regs.filter(x=>x!==r);
@@ -650,7 +675,7 @@ document.addEventListener('submit',async e=>{
     if(f.id==='f-novo'){const d=lerForm();d.valor=num($('#p-valor').value);d.tipo=f.dataset.tipo;d.andamento=$('#p-and').value;const r=await salvar(()=>api('/api/processos',{method:'POST',body:d}));toast(r.pendente?'Cobrança cadastrada. Aguardando autorização.':'Processo cadastrado.');openProc(r.id)}
     if(f.id==='f-proc'){const p=window._P,d={};
       if(canJ){Object.assign(d,lerForm());d.valor=num($('#p-valor').value);d.valor_acordo=num($('#p-valor_acordo').value)}
-      if(canF){d.valor_pago=num($('#p-valor_pago').value);d.conferido=$('#p-conferido').checked}
+      if(canF){d.conferido=$('#p-conferido').checked}
       const r=await salvar(()=>api('/api/processos/'+p.id,{method:'POST',body:d}));toast(r.mudancas?'Alterações salvas.':'Nada mudou.');openProc(p.id)}
     if(f.id==='f-and'){const tx=$('#and-t').value.trim();if(!tx){toast('Escreva o andamento.');return}await salvar(()=>api(`/api/processos/${f.dataset.id}/andamentos`,{method:'POST',body:{texto:tx}}),'Andamento adicionado.');openProc(+f.dataset.id)}
     if(f.id==='f-custa'){const body={tipo:$('#c-tipo').value,vencimento:$('#c-venc').value,valor:num($('#c-valor').value),descricao:$('#c-desc').value};
@@ -663,6 +688,10 @@ document.addEventListener('submit',async e=>{
       await api('/api/usuarios',{method:'POST',body});toast(body.id?'Usuário salvo.':'Usuário criado. No primeiro acesso ele usa a senha padrão.');ADM.usuarios=null;closeLayer();carregaAdmin()}
     if(f.id==='f-hist'){ADM.hf={usuario:$('#h-quem').value,q:$('#h-q').value.trim()};ADM.historico=null;$('#adm').innerHTML=admBody();drawIcons();await carregaAdmin()}
     if(f.id==='f-rec'){const m=$('#rec-motivo').value.trim();if(!m){toast('Escreva o motivo.');return}await salvar(()=>api(`/api/processos/${f.dataset.id}/autorizacao`,{method:'POST',body:{decisao:'recusar',motivo:m}}),'Cobrança recusada.');openProc(+f.dataset.id)}
+    if(f.id==='f-pag'){const v=num($('#pg-valor').value);if(!v||v<=0){toast('Digite o valor pago.');return}
+      const fd=new FormData();fd.append('data',$('#pg-data').value);fd.append('valor',v);fd.append('descricao',$('#pg-desc').value.trim());
+      const arq=$('#pg-comp');[...arq.files].forEach(x=>fd.append('arquivo',x));f.querySelector('button.primary').disabled=true;
+      await salvar(()=>api(`/api/processos/${f.dataset.pid}/pagamentos`,{method:'POST',body:fd}),'Pagamento lançado.');openProc(+f.dataset.pid);return}
     if(f.id==='f-pagar'){const cid=+f.dataset.cid,pid=window._P.id,arq=$('#pg-arq');const tem=arq&&arq.files.length;
       f.querySelector('button.primary').disabled=true;
       await salvar(async()=>{await api(`/api/custas/${cid}/pago`,{method:'POST',body:{pago:true}});if(tem)await enviarAnexo(pid,cid,'Comprovante',arq.files)},tem?'Custa paga, comprovante anexado.':'Custa marcada como paga.');openProc(pid);return}
