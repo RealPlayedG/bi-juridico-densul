@@ -122,6 +122,11 @@ def sincronizar(motivo="alteracao"):
     if not configurado():
         ESTADO["erro"] = "Falta configurar ESPELHO_PLANILHA_ID e GOOGLE_CREDENTIALS_JSON no Railway."
         return False
+    from db import config_ler
+    if config_ler(f"espelho_ok_{PLANILHA_ID}", "") != "1":
+        # trava: só escreve nesta planilha depois de trazer para o BI o que foi lançado nela (Atualizar pela planilha)
+        ESTADO["erro"] = "Aguardando a primeira Atualização pela planilha: antes de escrever nela, o sistema traz o que foi lançado na planilha."
+        return False
     import gspread
     from google.oauth2.service_account import Credentials
     with _trava:
@@ -151,6 +156,20 @@ def sincronizar(motivo="alteracao"):
             return False
         finally:
             ESTADO["rodando"] = False
+
+
+def baixar_xlsx(caminho):
+    """Baixa a planilha (como .xlsx) direto do Google, para o "Atualizar pela planilha"."""
+    if not configurado():
+        raise ValueError("Falta configurar ESPELHO_PLANILHA_ID e GOOGLE_CREDENTIALS_JSON no Railway.")
+    import gspread
+    from google.oauth2.service_account import Credentials
+    cred = Credentials.from_service_account_info(json.loads(os.environ["GOOGLE_CREDENTIALS_JSON"]),
+                                                 scopes=["https://www.googleapis.com/auth/drive.readonly"])
+    dados = gspread.authorize(cred).export(PLANILHA_ID, format="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    with open(caminho, "wb") as f:
+        f.write(dados)
+    return caminho
 
 
 def rotina():

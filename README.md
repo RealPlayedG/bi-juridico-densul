@@ -112,15 +112,17 @@ No Railway também dá para voltar a qualquer publicação anterior em Deploymen
 
 ## Planilha Jurídico (a original)
 
-- **Atualizar pela planilha** (Administração): envie a planilha em .xlsx. O sistema compara com o que tem e mostra antes o que
+- **Atualizar pela planilha** (Administração): clique em **Buscar da planilha do Google** (ou envie o .xlsx). O sistema compara com o que tem e mostra antes o que
   vai entrar: processos novos, custas e links novos, andamentos e campos que mudaram na planilha. Nada é apagado nem duplicado.
   Se o mesmo campo mudou no BI e na planilha, fica o do BI e aparece em "Para conferir". Nº de processo diferente sempre vai
   para conferir. Faz backup antes e guarda a planilha como base para a próxima comparação.
+- Trava: o sistema só começa a escrever na planilha depois da primeira atualização buscada do Google e confirmada ("Confirmar e ligar a planilha ao BI").
 - Depois disso, o sistema passa a escrever na planilha original (ESPELHO_PLANILHA_ID = id da planilha Jurídico):
   reescreve as abas Cobrança e Processos Diversos cerca de 1 minuto depois de qualquer alteração, com os links do Drive
   (nota e boletos). Cabeçalho, totais, fórmulas e as outras abas ficam como estão.
 - A partir daí o trabalho é feito no BI. O que for digitado nessas duas abas da planilha é apagado na próxima atualização.
-- Precisa de GOOGLE_CREDENTIALS_JSON (conta de serviço) no Railway, e a planilha compartilhada como Editor com o e-mail dessa conta.
+- Conta de serviço: bi-juridico@bi-juridico-densul-11041426.iam.gserviceaccount.com (projeto Google Cloud bi-juridico-densul-11041426,
+  APIs Sheets e Drive). A chave fica em GOOGLE_CREDENTIALS_JSON no Railway. A planilha precisa estar compartilhada como Editor com esse e-mail.
 
 ## Rodar no computador
 

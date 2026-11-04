@@ -1227,11 +1227,19 @@ def _plano_json(pl):
 def api_importar_previa():
     import importar
     arq = request.files.get("arquivo")
-    if not arq or not arq.filename.lower().endswith(".xlsx"):
+    do_google = request.form.get("google") == "1"
+    if not do_google and (not arq or not arq.filename.lower().endswith(".xlsx")):
         return jsonify(erro="Envie a planilha em .xlsx (no Google Sheets: Arquivo > Fazer download > Microsoft Excel)."), 400
-    nome = f"{agora().strftime('%Y-%m-%d_%H%M%S')}_{secure_filename(arq.filename)}"
+    nome = f"{agora().strftime('%Y-%m-%d_%H%M%S')}_{'google.xlsx' if do_google else secure_filename(arq.filename)}"
     caminho = os.path.join(_pasta_imp(), "previas", nome)
-    arq.save(caminho)
+    try:
+        if do_google:
+            import espelho
+            espelho.baixar_xlsx(caminho)
+        else:
+            arq.save(caminho)
+    except Exception as e:  # noqa: BLE001
+        return jsonify(erro=f"Não consegui baixar a planilha do Google: {e}"[:300]), 400
     try:
         itens, avisos = importar.limpar(importar.ler(caminho))
         base = _planilha_base()
@@ -1239,7 +1247,9 @@ def api_importar_previa():
         pl = importar.planejar(itens, base_itens)
     except ValueError as e:
         return jsonify(erro=str(e)), 400
-    return jsonify(arquivo=nome, base=os.path.basename(base) if base else None, plano=_plano_json(pl), avisos=avisos)
+    import espelho
+    ligar = do_google and config_ler(f"espelho_ok_{espelho.PLANILHA_ID}", "") != "1"
+    return jsonify(arquivo=nome, base=os.path.basename(base) if base else None, plano=_plano_json(pl), avisos=avisos, ligar=ligar)
 
 
 @app.post("/api/importar/aplicar")
@@ -1258,8 +1268,13 @@ def api_importar_aplicar():
     backup.fazer("antes-de-atualizar-pela-planilha")
     n = importar.aplicar(pl, eu())
     os.replace(caminho, os.path.join(_pasta_imp(), nome))
+    import espelho
     with engine.begin() as c:
         config_gravar(c, "planilha_base", nome)
+        if nome.endswith("_google.xlsx") and espelho.PLANILHA_ID:  # veio da própria planilha ligada: pode escrever nela
+            config_gravar(c, f"espelho_ok_{espelho.PLANILHA_ID}", "1")
+    if nome.endswith("_google.xlsx"):
+        espelho.ESTADO["historico_id"] = None  # escreve na próxima volta
     return jsonify(ok=True, **n, conflitos=len(pl["conflitos"]))
 
 

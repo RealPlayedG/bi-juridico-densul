@@ -514,7 +514,8 @@ function mescHTML(r){
     ${bloco('Links novos (Drive)',pl.anexos,x=>`<li><b>${esc(x.processo)}</b> · ${esc(x.nome)}</li>`)}
     ${bloco('Para conferir (não muda nada sozinho)',pl.conflitos,x=>`<li><b>${esc(x.processo)}</b> · ${esc(x.nome)}: no BI ${v(x.de)}, na planilha ${v(x.para)} <span class="muted">(${esc(x.motivo)})</span></li>`)}
     ${bloco('Fora da atualização',pl.ignorados,x=>`<li><b>${esc(x.processo)}</b> <span class="muted">(${esc(x.motivo)})</span></li>`)}
-    ${tot?`<div class="acts" style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px"><button class="btn primary" data-mesc-ok="${esc(r.arquivo)}">${icon('check')}Aplicar ${tot} ${tot===1?'mudança':'mudanças'}</button></div>`:''}</div>`;
+    ${tot||r.ligar?`<div class="acts" style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px"><button class="btn primary" data-mesc-ok="${esc(r.arquivo)}">${icon('check')}${tot?`Aplicar ${tot} ${tot===1?'mudança':'mudanças'}`:'Confirmar'}${r.ligar?' e ligar a planilha ao BI':''}</button></div>`:''}
+    ${r.ligar?`<p class="hint">Depois de confirmar, o sistema passa a escrever nas abas Cobrança e Processos Diversos da planilha. O que for digitado nelas depois disso é apagado na atualização seguinte: lancem tudo no BI.</p>`:''}</div>`;
 }
 async function enviarAnexo(pid,cid,cat,files,link){
   const fd=new FormData();[...(files||[])].forEach(f=>fd.append('arquivo',f));if(link)fd.append('link',link);fd.append('categoria',cat);if(cid)fd.append('custa_id',cid);
@@ -556,7 +557,7 @@ function admBody(){
   }
   if(S.adm==='importar'){
     if(!P.length)return `<section class="card"><div class="card-h"><h2>Importar planilha</h2></div><div class="card-b"><p class="hint">Envie a planilha Jurídico em .xlsx (no Google Sheets: Arquivo › Fazer download › Microsoft Excel). Entram as abas Cobrança e Processos Diversos, com notas, custas e links do Drive. Um backup é feito antes.</p><form id="f-imp" class="filters" style="padding:14px 0 0"><input type="file" id="imp-arq" accept=".xlsx" required><button class="btn primary">${icon('file-up')}Importar</button></form><div id="imp-res"></div></div></section>`;
-    return `<section class="card"><div class="card-h"><h2>Atualizar pela planilha</h2></div><div class="card-b"><p class="hint">Envie a planilha Jurídico em .xlsx (no Google Sheets: Arquivo › Fazer download › Microsoft Excel). O sistema compara com o que já tem e mostra antes o que vai entrar: processos novos, custas e links novos, e campos que mudaram na planilha. Nada é apagado nem duplicado. Se o mesmo campo foi mudado no BI e na planilha, fica o do BI e aparece para você conferir. Um backup é feito antes de aplicar.</p><form id="f-mesc" class="filters" style="padding:14px 0 0"><input type="file" id="mesc-arq" accept=".xlsx" required><button class="btn primary">${icon('search')}Ver o que muda</button></form><div id="mesc-res"></div></div></section>`;
+    return `<section class="card"><div class="card-h"><h2>Atualizar pela planilha</h2></div><div class="card-b"><p class="hint">Envie a planilha Jurídico em .xlsx (no Google Sheets: Arquivo › Fazer download › Microsoft Excel). O sistema compara com o que já tem e mostra antes o que vai entrar: processos novos, custas e links novos, e campos que mudaram na planilha. Nada é apagado nem duplicado. Se o mesmo campo foi mudado no BI e na planilha, fica o do BI e aparece para você conferir. Um backup é feito antes de aplicar.</p><div class="filters" style="padding:14px 0 0"><button class="btn primary" data-mesc-google="1">${icon('cloud-download')}Buscar da planilha do Google</button><span class="muted" style="font-size:12.5px">ou envie o arquivo:</span><form id="f-mesc" style="display:flex;gap:8px;align-items:center"><input type="file" id="mesc-arq" accept=".xlsx" required><button class="btn">${icon('search')}Ver o que muda</button></form></div><div id="mesc-res"></div></div></section>`;
   }
   return '';
 }
@@ -659,6 +660,8 @@ document.addEventListener('click',async e=>{
       <div class="fld"><label for="pg-comp">Comprovante <span class="muted">opcional</span></label><input type="file" id="pg-comp" accept=".pdf,image/*"></div></div>
       <div class="acts"><button type="button" class="btn sm" data-pg-cancel="1">Cancelar</button><button class="btn sm primary">${icon('check')}Lançar pagamento</button></div></form>`;drawIcons();$('#pg-valor').focus();return}
   if(d.delPag){if(!confirma(t,icon('check')))return;await salvar(()=>api('/api/pagamentos/'+d.delPag,{method:'DELETE'}),'Pagamento excluído.');openProc(ABERTO);return}
+  if(d.mescGoogle){t.disabled=true;$('#mesc-res').innerHTML='<div class="loading" style="min-height:80px"><span class="spin"></span></div>';const fd=new FormData();fd.append('google','1');
+    try{const r=await api('/api/importar/previa',{method:'POST',body:fd});$('#mesc-res').innerHTML=mescHTML(r);drawIcons()}catch(er){$('#mesc-res').innerHTML='';toast(er.message)}t.disabled=false;return}
   if(d.mescOk){t.disabled=true;const r=await salvar(()=>api('/api/importar/aplicar',{method:'POST',body:{arquivo:d.mescOk}}));
     $('#mesc-res').innerHTML=`<div class="box ok" style="margin-top:14px">${icon('check')}Pronto: ${r.novos} processos novos, ${r.campos} campos, ${r.custas} custas, ${r.andamentos} andamentos e ${r.anexos} links trazidos da planilha.${r.conflitos?` ${r.conflitos} para conferir ficaram como estavam no BI.`:''} Tudo está no Histórico.</div>`;drawIcons();return}
   if(d.anexarCusta){anexoForm(ABERTO,+d.anexarCusta,d.cat);return}
