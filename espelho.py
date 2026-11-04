@@ -111,7 +111,15 @@ def _cabecalho(ws, chave):
     raise ValueError(f'Cabeçalho não encontrado na aba "{ws.title}".')
 
 
+def _protege(v):
+    """Texto que começa com = + - @ viraria fórmula (ex.: "+ FRIO AR..."): o apóstrofo faz o Sheets guardar como texto."""
+    if isinstance(v, str) and v[:1] in ("=", "+", "-", "@") and not v.upper().startswith("=HYPERLINK("):
+        return "'" + v
+    return v
+
+
 def _escrever(ws, linha_cab, linhas, ultima_col):
+    linhas = [[_protege(v) for v in ln] for ln in linhas]
     inicio = linha_cab + 1
     total = max(ws.row_count, inicio + len(linhas) + 50)
     if total > ws.row_count:
