@@ -822,6 +822,29 @@ def api_excluir_audiencia(aid):
     return jsonify(ok=True)
 
 
+@app.post("/api/audiencias/<int:aid>/finalizar")
+@logado
+@so("editar_juridico")
+def api_finalizar_audiencia(aid):
+    """Conclui a audiência. A observação vira um andamento do processo, identificado como da audiência."""
+    obs = str(corpo().get("obs", "")).strip()
+    if not obs:
+        return jsonify(erro="Escreva como foi a audiência."), 400
+    with engine.begin() as c:
+        a = _audiencia(c, aid)
+        if a.get("finalizada"):
+            return jsonify(erro="Essa audiência já foi finalizada."), 400
+        dia = date.fromisoformat(str(a["data"])[:10]).strftime("%d/%m/%Y")
+        titulo = f'Audiência de {a["tipo"].lower()} de {dia}{" às " + a["hora"] if a.get("hora") else ""} finalizada'
+        c.execute(insert(andamentos).values(processo_id=a["processo_id"], texto=f"{titulo}: {obs}"[:4000],
+                                            por=eu()["nome"], em=agora(), audiencia_id=aid))
+        c.execute(update(audiencias).where(audiencias.c.id == aid).values(finalizada=True, finalizada_em=agora(),
+                                                                         finalizada_por=eu()["nome"], resultado=obs[:4000]))
+        c.execute(update(processos).where(processos.c.id == a["processo_id"]).values(atualizado_em=agora()))
+        registrar(c, eu(), "Audiência finalizada", a["processo_id"], {"tipo": a["tipo"], "data": a["data"], "hora": a["hora"], "observacao": obs[:300]})
+    return jsonify(ok=True)
+
+
 @app.post("/api/sugestoes/<int:andamento_id>/ignorar")
 @logado
 @so("editar_juridico")

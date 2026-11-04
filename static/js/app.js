@@ -71,7 +71,8 @@ const validos=()=>ativos().filter(autorizado);
 const pendAut=()=>canAutorizar?P.filter(p=>p.autorizacao==='pendente'&&vis(p)):[];
 const audVis=()=>{PMreset();return AUD.filter(a=>{const p=proc(a.processo_id);return p&&vis(p)})};
 const audHora=a=>a.hora?' às '+a.hora:'';
-const audFut=()=>audVis().filter(a=>a.data>=HOJE).sort((x,y)=>(x.data+x.hora).localeCompare(y.data+y.hora));
+const linkOuTexto=t=>{t=String(t||'').trim();return /^https?:\/\/\S+$/i.test(t)?`<a href="${esc(t)}" target="_blank" rel="noopener" class="lk">${esc(t.replace(/^https?:\/\//,'').slice(0,60))}${icon('external-link')}</a>`:esc(t)};
+const audFut=()=>audVis().filter(a=>a.data>=HOJE&&!a.finalizada).sort((x,y)=>(x.data+x.hora).localeCompare(y.data+y.hora));
 const audProx=()=>audFut().filter(a=>a.data<=addDays(HOJE,3));
 const autPill=p=>p.autorizacao==='pendente'?'<span class="cu proxima">Aguardando autorização</span>':p.autorizacao==='recusada'?'<span class="cu vencida">Recusada</span>':'';
 function custaSt(c){
@@ -235,7 +236,7 @@ function aRow(a,compacto){
   const p=proc(a.processo_id),d=dParts(a.data),hoje=a.data===HOJE;
   const pill=`<span class="cu ${hoje?'hoje':a.data<=addDays(HOJE,3)?'proxima':'aud'}">${hoje?'Hoje':'Audiência '+quando(a.data)}${audHora(a)}</span>`;
   if(compacto)return `<div class="urow clickable is-aud" data-open="${p.id}"><div class="datebox">${`<b>${d.d}</b><small>${MES3[d.m]}</small>`}</div><div class="t"><b>${esc(parteNome(p))}</b><small>Audiência de ${esc(a.tipo.toLowerCase())} · ${esc(p.loja||'sem loja')} ${pill}</small></div><div class="v num">${a.hora||''}</div></div>`;
-  return `<div class="crow is-aud"><div class="datebox"><b>${d.d}</b><small>${MES3[d.m]}</small></div><div class="t" data-open="${p.id}"><b>${esc(parteNome(p))}</b><small>Audiência de ${esc(a.tipo.toLowerCase())}${a.local?' · '+esc(a.local):''} · ${esc(p.loja||'sem loja')} ${pill}</small></div><div class="v num">${a.hora||''}</div><div class="acts"><button class="btn sm" data-open="${p.id}">${icon('folder-open')}Abrir processo</button></div></div>`;
+  return `<div class="crow is-aud"><div class="datebox"><b>${d.d}</b><small>${MES3[d.m]}</small></div><div class="t" data-open="${p.id}"><b>${esc(parteNome(p))}</b><small>Audiência de ${esc(a.tipo.toLowerCase())}${a.local?' · '+linkOuTexto(a.local):''} · ${esc(p.loja||'sem loja')} ${pill}</small></div><div class="v num">${a.hora||''}</div><div class="acts"><button class="btn sm" data-open="${p.id}">${icon('folder-open')}Abrir processo</button></div></div>`;
 }
 function cRow(c,compacto){
   const p=proc(c.processo_id),d=c.vencimento?dParts(c.vencimento):null;
@@ -391,9 +392,12 @@ function renderProc(p){
       ${isLeitura?'':`<button class="btn sm" data-anexar-custa="${c.id}" data-cat="${c.pago?'Comprovante':'Boleto'}">${icon('paperclip')}${c.pago?'Comprovante':'Boleto'}</button>`}
       ${canJ&&!c.pago?`<button class="btn sm" data-edit-custa="${c.id}">${icon('pencil')}</button>`:''}
       ${canF?(c.pago?`<button class="btn sm" data-despagar="${c.id}">Desfazer pagamento</button>`:`<button class="btn sm primary" data-pagar="${c.id}">${icon('check')}Marcar paga</button>`):''}</div></div>`}).join(''):'<p class="empty">Nenhuma custa lançada.</p>';
-  const audH=p.audiencias.length?p.audiencias.map(a=>`<div class="cbox"><div class="cbox-h"><b>Audiência de ${esc(a.tipo.toLowerCase())}</b><span class="cu ${a.data<HOJE?'semdata':a.data===HOJE?'hoje':a.data<=addDays(HOJE,3)?'proxima':'aud'}">${a.data<HOJE?'Realizada':quando(a.data)}</span><span class="v num">${brDate(a.data)}${audHora(a)}</span></div>
-    ${a.local||a.obs?`<small class="muted">${a.local?esc(a.local):''}${a.local&&a.obs?' · ':''}${a.obs?esc(a.obs):''}</small>`:''}
-    ${canJ?`<div class="cbox-a"><small class="muted">marcada por ${esc(a.criado_por)}</small><span class="sp"></span><button class="btn sm" data-edit-aud="${a.id}">${icon('pencil')}Editar</button></div>`:''}</div>`).join(''):'<p class="empty">Nenhuma audiência marcada.</p>';
+  const audPill=a=>a.finalizada?`<span class="cu paga">Finalizada</span>`:`<span class="cu ${a.data<HOJE?'falta':a.data===HOJE?'hoje':a.data<=addDays(HOJE,3)?'proxima':'aud'}">${a.data<HOJE?'Falta finalizar':quando(a.data)}</span>`;
+  const audH=p.audiencias.length?p.audiencias.map(a=>`<div class="cbox ${a.finalizada?'aud-ok':''}"><div class="cbox-h"><b>Audiência de ${esc(a.tipo.toLowerCase())}</b>${audPill(a)}<span class="v num">${brDate(a.data)}${audHora(a)}</span></div>
+    ${a.local?`<div class="aud-local">${icon(/^https?:/i.test(a.local)?'video':'map-pin')}${linkOuTexto(a.local)}</div>`:''}${a.obs?`<small class="muted">${esc(a.obs)}</small>`:''}
+    ${a.finalizada?`<div class="aud-res"><small>Finalizada por ${esc(a.finalizada_por)} em ${brDT(a.finalizada_em)}</small>${esc(a.resultado)}</div>`:''}
+    <div id="aud-fin-${a.id}"></div>
+    ${canJ?`<div class="cbox-a"><small class="muted">marcada por ${esc(a.criado_por)}</small><span class="sp"></span><button class="btn sm" data-edit-aud="${a.id}">${icon('pencil')}Editar</button>${a.finalizada?'':`<button class="btn sm primary" data-fin-aud="${a.id}">${icon('check')}Finalizar</button>`}</div>`:''}</div>`).join(''):'<p class="empty">Nenhuma audiência marcada.</p>';
   const autH=p.autorizacao==='pendente'?`<div class="box miss aut-box">${icon('shield-alert')}<span><b>Aguardando autorização.</b> Esta cobrança ainda não entra nos totais.</span>${canAutorizar?`<span class="aut-acts"><button class="btn sm" data-recusar="${p.id}">${icon('x')}Recusar</button><button class="btn sm primary" data-autorizar="${p.id}">${icon('check')}Autorizar</button></span>`:''}</div><div id="rec-form"></div>`
     :p.autorizacao==='recusada'?`<div class="box aut-box rec">${icon('ban')}<span><b>Recusada por ${esc(p.autorizado_por)}</b> em ${brDT(p.autorizado_em)}${p.motivo_recusa?`: ${esc(p.motivo_recusa)}`:''}</span>${canJ?`<span class="aut-acts"><button class="btn sm" data-reenviar="${p.id}">${icon('send')}Reenviar para autorização</button></span>`:''}</div>`
     :p.autorizado_por&&p.tipo==='cobranca'?`<p class="hint aut-ok">${icon('shield-check')}Autorizada por ${esc(p.autorizado_por)} em ${brDT(p.autorizado_em)}</p>`:'';
@@ -424,7 +428,7 @@ function renderProc(p){
     <div class="sec">
       <div class="sec-h"><h3>${icon('list')}Andamento</h3></div>
       ${canJ?`<form id="f-and" data-id="${p.id}" class="reply" style="border:0;padding:0"><textarea id="and-t" placeholder="O que aconteceu no processo?"></textarea><button class="btn primary" aria-label="Adicionar andamento">${icon('send')}</button></form>`:''}
-      ${p.andamentos.length?`<ul class="tl">${p.andamentos.map(a=>`<li class="${norm(a.texto).startsWith('conferir')?'conferir':''}"><small>${brDT(a.em)} · ${esc(a.por)}</small>${esc(a.texto)}</li>`).join('')}</ul>`:'<p class="empty">Nenhum andamento.</p>'}
+      ${p.andamentos.length?`<ul class="tl">${p.andamentos.map(a=>`<li class="${norm(a.texto).startsWith('conferir')?'conferir':''}${a.audiencia_id?' aud':''}"><small>${brDT(a.em)} · ${esc(a.por)}${a.audiencia_id?` <span class="tag-aud">${icon('gavel')}Audiência</span>`:''}</small>${esc(a.texto)}</li>`).join('')}</ul>`:'<p class="empty">Nenhum andamento.</p>'}
     </div>
     <div class="sec">
       <div class="sec-h"><h3>${icon('gavel')}Audiências</h3>${canJ?`<button class="btn sm" data-nova-aud="${p.id}">${icon('plus')}Nova audiência</button>`:''}</div>
@@ -576,6 +580,9 @@ document.addEventListener('click',async e=>{
   if(d.autorizar){if(!confirma(t,'Confirmar autorização?'))return;await salvar(()=>api(`/api/processos/${d.autorizar}/autorizacao`,{method:'POST',body:{decisao:'autorizar'}}),'Cobrança autorizada.');openProc(ABERTO);return}
   if(d.recusar){$('#rec-form').innerHTML=`<form class="inline-form" id="f-rec" data-id="${d.recusar}"><div class="fld"><label for="rec-motivo">Motivo da recusa</label><textarea id="rec-motivo" style="min-height:60px" required></textarea></div><div class="acts"><button type="button" class="btn" data-fechar-form="rec-form">Cancelar</button><button class="btn primary">Recusar</button></div></form>`;$('#rec-motivo').focus();return}
   if(d.reenviar){await salvar(()=>api(`/api/processos/${d.reenviar}/autorizacao`,{method:'POST',body:{decisao:'reenviar'}}),'Reenviado para autorização.');openProc(ABERTO);return}
+  if(d.finAud){const a=window._P.audiencias.find(x=>x.id===+d.finAud);document.querySelectorAll('[id^="aud-fin-"]').forEach(x=>x.innerHTML='');
+    $('#aud-fin-'+a.id).innerHTML=`<form class="aud-fin" id="f-finaud" data-aid="${a.id}"><label for="fa-obs">Como foi a audiência? <span class="muted">vai para o andamento do processo</span></label><textarea id="fa-obs" rows="3" required placeholder="Ex.: Parte ré não compareceu, vamos indicar novo endereço."></textarea><div class="acts"><button type="button" class="btn sm" data-fin-cancel="1">Cancelar</button><button class="btn sm primary">${icon('check')}Finalizar audiência</button></div></form>`;drawIcons();$('#fa-obs').focus();return}
+  if(d.finCancel){t.closest('form').remove();return}
   if(d.novaAud){audForm(+d.novaAud);return}
   if(d.editAud){const p=window._P;audForm(ABERTO,p.audiencias.find(x=>x.id===+d.editAud));return}
   if(d.delAud){if(!confirma(t,'Excluir mesmo?'))return;await salvar(()=>api('/api/audiencias/'+d.delAud,{method:'DELETE'}),'Audiência excluída.');openProc(ABERTO);return}
@@ -649,6 +656,8 @@ document.addEventListener('submit',async e=>{
       await api('/api/usuarios',{method:'POST',body});toast(body.id?'Usuário salvo.':'Usuário criado. No primeiro acesso ele usa a senha padrão.');ADM.usuarios=null;closeLayer();carregaAdmin()}
     if(f.id==='f-hist'){ADM.hf={usuario:$('#h-quem').value,q:$('#h-q').value.trim()};ADM.historico=null;$('#adm').innerHTML=admBody();drawIcons();await carregaAdmin()}
     if(f.id==='f-rec'){const m=$('#rec-motivo').value.trim();if(!m){toast('Escreva o motivo.');return}await salvar(()=>api(`/api/processos/${f.dataset.id}/autorizacao`,{method:'POST',body:{decisao:'recusar',motivo:m}}),'Cobrança recusada.');openProc(+f.dataset.id)}
+    if(f.id==='f-finaud'){const obs=$('#fa-obs').value.trim();if(!obs){toast('Escreva como foi a audiência.');return}
+      await salvar(()=>api(`/api/audiencias/${f.dataset.aid}/finalizar`,{method:'POST',body:{obs}}),'Audiência finalizada.');openProc(ABERTO);return}
     if(f.id==='f-aud'){const body={data:$('#au-data').value,hora:$('#au-hora').value,tipo:$('#au-tipo').value,local:$('#au-local').value,obs:$('#au-obs').value,andamento_id:+f.dataset.andamento||null};
       if(f.dataset.aid)await salvar(()=>api('/api/audiencias/'+f.dataset.aid,{method:'POST',body}),'Audiência alterada.');
       else await salvar(()=>api(`/api/processos/${f.dataset.pid}/audiencias`,{method:'POST',body}),'Audiência marcada.');

@@ -107,6 +107,7 @@ andamentos = Table(
     Column("texto", Text, nullable=False),
     Column("por", String(120), default=""),
     Column("em", DateTime, default=agora),
+    Column("audiencia_id", Integer),                        # andamento escrito ao finalizar uma audiência
 )
 
 custas = Table(
@@ -150,6 +151,10 @@ audiencias = Table(
     Column("local", Text, default=""),                      # endereço ou link da audiência online
     Column("obs", Text, default=""),
     Column("andamento_id", Integer),                        # quando veio de uma sugestão tirada do andamento
+    Column("finalizada", Boolean, default=False),
+    Column("finalizada_em", DateTime),
+    Column("finalizada_por", String(120), default=""),
+    Column("resultado", Text, default=""),                  # observação escrita ao finalizar (vira andamento)
     Column("criado_por", String(120), default=""),
     Column("criado_em", DateTime, default=agora),
     Column("excluido", Boolean, default=False),
@@ -221,6 +226,11 @@ COLUNAS_NOVAS = [  # (tabela, coluna, tipo SQL): criadas sozinhas na subida, em 
     ("processos", "autorizado_por", "VARCHAR(120) DEFAULT ''"),
     ("processos", "autorizado_em", "TIMESTAMP"),
     ("processos", "motivo_recusa", "TEXT DEFAULT ''"),
+    ("andamentos", "audiencia_id", "INTEGER"),
+    ("audiencias", "finalizada", "BOOLEAN DEFAULT FALSE"),
+    ("audiencias", "finalizada_em", "TIMESTAMP"),
+    ("audiencias", "finalizada_por", "VARCHAR(120) DEFAULT ''"),
+    ("audiencias", "resultado", "TEXT DEFAULT ''"),
 ]
 
 

@@ -62,6 +62,10 @@ o histórico só dele. Para isso funcionar, **cada pessoa precisa ter o próprio
 - Dentro do processo: **Nova audiência** (data, hora, tipo, local ou link, observação). Só o jurídico e o administrador marcam.
 - Aparecem na **Agenda** (lista e calendário, em roxo), no card "Próximos dias" do Início, e geram aviso no sino e no Início
   quando faltam 3 dias ou menos.
+- Link de reunião (Meet, Zoom, Teams) no campo local vira link clicável.
+- **Finalizar**: depois da audiência, o jurídico clica em Finalizar e escreve como foi. Esse texto entra no andamento do processo
+  com a etiqueta "Audiência", e a audiência sai dos avisos e da lista de próximas. Audiência com data passada e não finalizada
+  aparece como "Falta finalizar".
 - A Agenda mostra **Audiências encontradas nos andamentos** (ex.: "audiência de conciliação para o dia 23/10/2026 às 10:00")
   para o jurídico adicionar com um clique ou ignorar. Nada entra sozinho.
 

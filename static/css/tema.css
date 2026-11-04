@@ -352,3 +352,21 @@ a.btn{text-decoration:none;color:var(--ink)} a.btn.primary{color:var(--primary-i
 .u-lojas label{display:flex !important;align-items:center;justify-content:flex-start;gap:8px;text-align:left;font-size:13px;font-weight:400;color:var(--ink);padding:3px 0;margin:0;cursor:pointer;white-space:nowrap}
 .u-lojas label.u-reg{font-size:11.5px;font-weight:600;color:var(--muted);text-transform:none;padding:4px 0 2px}
 .u-lojas input{width:15px;height:15px;margin:0;flex:none;accent-color:var(--primary)}
+
+/* Audiências: link clicável, finalizar e andamento marcado */
+.cu.falta{background:var(--warn-soft);color:var(--warn)}
+.aud-local{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);min-width:0}
+.aud-local svg{width:15px;height:15px;flex:none}
+a.lk{color:var(--primary);font-weight:500;text-decoration:underline;text-underline-offset:2px;display:inline-flex;align-items:center;gap:4px;word-break:break-all}
+a.lk svg{width:13px;height:13px;flex:none}
+.aud-res{background:var(--surface-2);border-radius:10px;padding:8px 10px;font-size:13.5px;white-space:pre-wrap}
+.aud-res small{display:block;color:var(--muted);font-size:11.5px;margin-bottom:2px;white-space:normal}
+.cbox.aud-ok .cbox-h b{color:var(--muted)}
+.aud-fin{display:flex;flex-direction:column;gap:8px;border:1px solid var(--primary);border-radius:12px;padding:10px 12px;background:var(--surface)}
+.aud-fin label{font-size:13px;font-weight:600}
+.aud-fin label .muted{font-weight:400}
+.aud-fin textarea{width:100%;resize:vertical;font:inherit;font-size:13.5px}
+.aud-fin .acts{display:flex;justify-content:flex-end;gap:8px}
+.tl li.aud::before{background:var(--nt)}
+.tag-aud{display:inline-flex;align-items:center;gap:3px;margin-left:6px;padding:1px 7px;border-radius:999px;font-size:10.5px;font-weight:600;background:var(--nt-soft);color:var(--nt);vertical-align:1px}
+.tag-aud svg{width:11px;height:11px}
