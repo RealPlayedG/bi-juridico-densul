@@ -1,7 +1,9 @@
 """
 Planilha espelho: uma cópia da planilha "Jurídico" que o sistema mantém atualizada.
 
-- O sistema ESCREVE na planilha; o que for digitado nela não volta para o sistema.
+- Nos dois sentidos: a cada minuto o sistema confere se a planilha foi editada. Se foi (e ninguém mexe nela há
+  QUIETO segundos), traz para o BI o que mudou desde a última escrita; depois reescreve a planilha com o BI.
+  Mesmo campo mudado no BI e na planilha: fica o do BI (conflito no histórico). Linha apagada na planilha volta.
 - Só as abas "Cobrança" e "Processos Diversos" são reescritas, a partir da linha
   seguinte ao cabeçalho. Cabeçalho, totais do topo, fórmulas, formatação e listas
   de opções ficam como estão. As outras abas não são tocadas.
@@ -21,7 +23,10 @@ from sqlalchemy import func, select
 
 PLANILHA_ID = os.environ.get("ESPELHO_PLANILHA_ID", "").strip()
 INTERVALO = int(os.environ.get("ESPELHO_INTERVALO", "60"))
-ESTADO = {"ultima": None, "erro": None, "linhas": 0, "historico_id": None, "rodando": False}
+QUIETO = int(os.environ.get("ESPELHO_QUIETO", "120"))  # espera a planilha ficar parada esse tempo antes de ler/escrever
+DOIS_SENTIDOS = os.environ.get("ESPELHO_DOIS_SENTIDOS", "1") == "1"
+ESCOPOS = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive.readonly"]
+ESTADO = {"ultima": None, "erro": None, "linhas": 0, "historico_id": None, "rodando": False, "trazido": None}
 _trava = threading.Lock()
 
 
@@ -53,6 +58,78 @@ def _link(nome, link):
     if not link:
         return nome
     return '=HYPERLINK("{}"{}"{}")'.format(link.replace('"', '""'), SEP["v"], (nome or "Abrir").replace('"', '""'))
+
+
+def _cred():
+    from google.oauth2.service_account import Credentials
+    return Credentials.from_service_account_info(json.loads(os.environ["GOOGLE_CREDENTIALS_JSON"]), scopes=ESCOPOS)
+
+
+def _pasta():
+    p = os.path.join(os.path.abspath(os.environ.get("PASTA_DADOS", "data")), "importacoes")
+    os.makedirs(p, exist_ok=True)
+    return p
+
+
+BASE = "base_planilha.xlsx"  # como a planilha ficou depois da última escrita do sistema
+
+
+def meta():
+    """modifiedTime e quem editou por último (Drive)."""
+    from google.auth.transport.requests import AuthorizedSession
+    r = AuthorizedSession(_cred()).get(f"https://www.googleapis.com/drive/v3/files/{PLANILHA_ID}",
+                                       params={"fields": "modifiedTime,lastModifyingUser(displayName,emailAddress)"}, timeout=30)
+    r.raise_for_status()
+    return r.json()
+
+
+def _ts(iso):
+    from datetime import datetime, timezone
+    return datetime.strptime(iso[:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc).timestamp()
+
+
+def _guardar_base():
+    """Depois de escrever: baixa a planilha e guarda como base; anota o modifiedTime visto."""
+    from db import config_gravar, engine
+    caminho = os.path.join(_pasta(), BASE)
+    baixar_xlsx(caminho + ".tmp")
+    os.replace(caminho + ".tmp", caminho)
+    m = meta()
+    with engine.begin() as c:
+        config_gravar(c, "planilha_base", BASE)
+        config_gravar(c, "planilha_vista", m.get("modifiedTime", ""))
+
+
+def trazer(m=None):
+    """Lê a planilha e traz para o BI o que mudou desde a última escrita do sistema. Devolve o resumo."""
+    import importar
+    from db import config_gravar, engine
+    m = m or meta()
+    quem_ed = (m.get("lastModifyingUser") or {})
+    caminho = os.path.join(_pasta(), "previas", f"auto_{time.strftime('%Y%m%d_%H%M%S')}.xlsx")
+    os.makedirs(os.path.dirname(caminho), exist_ok=True)
+    baixar_xlsx(caminho)
+    base = os.path.join(_pasta(), BASE)
+    try:
+        itens, _ = importar.limpar(importar.ler(caminho))
+        base_itens = importar.limpar(importar.ler(base))[0] if os.path.exists(base) else None
+        pl = importar.planejar(itens, base_itens)
+        tot = sum(len(pl[k]) for k in ("novos", "campos", "andamentos", "custas", "custas_alt", "pagamentos", "anexos"))
+        n = None
+        if tot or any(c.get("motivo") == "mudou no BI e na planilha" for c in pl["conflitos"]):
+            nome = quem_ed.get("displayName") or quem_ed.get("emailAddress") or ""
+            quem = {"usuario": "planilha", "nome": f"Planilha Google{' (última edição: ' + nome + ')' if nome else ''}"}
+            n = importar.aplicar(pl, quem)
+            ESTADO["trazido"] = {"em": time.strftime("%Y-%m-%d %H:%M"), **n}
+            print("Trazido da planilha:", n, flush=True)
+        with engine.begin() as c:
+            config_gravar(c, "planilha_vista", m.get("modifiedTime", ""))
+        return n
+    finally:
+        try:
+            os.remove(caminho)
+        except OSError:
+            pass
 
 
 def montar_linhas():
@@ -139,16 +216,13 @@ def sincronizar(motivo="alteracao"):
         ESTADO["erro"] = "Aguardando a primeira Atualização pela planilha: antes de escrever nela, o sistema traz o que foi lançado na planilha."
         return False
     import gspread
-    from google.oauth2.service_account import Credentials
     with _trava:
         ESTADO["rodando"] = True
         try:
             from db import engine, historico
             with engine.connect() as c:
                 hid = c.execute(select(func.max(historico.c.id))).scalar()
-            cred = Credentials.from_service_account_info(json.loads(os.environ["GOOGLE_CREDENTIALS_JSON"]),
-                                                         scopes=["https://www.googleapis.com/auth/spreadsheets"])
-            planilha = gspread.authorize(cred).open_by_key(PLANILHA_ID)
+            planilha = gspread.authorize(_cred()).open_by_key(PLANILHA_ID)
             loc = (planilha.fetch_sheet_metadata().get("properties", {}).get("locale") or "pt_BR").lower()
             SEP["v"] = "," if loc.split("_")[0] in ("en", "ja", "zh", "ko", "th", "he", "iw") else ";"
             abas = {ws.title.strip().lower(): ws for ws in planilha.worksheets()}
@@ -162,6 +236,8 @@ def sincronizar(motivo="alteracao"):
                 raise ValueError('A planilha espelho não tem a aba "Processos Diversos".')
             _escrever(ws, _cabecalho(ws, "identifica"), div, "L")
             ESTADO.update(ultima=time.strftime("%Y-%m-%d %H:%M"), erro=None, linhas=len(cob) + len(div), historico_id=hid)
+            if DOIS_SENTIDOS:
+                _guardar_base()
             return True
         except Exception as e:  # o espelho nunca derruba o sistema
             ESTADO["erro"] = f"{type(e).__name__}: {e}"[:400]
@@ -176,10 +252,7 @@ def baixar_xlsx(caminho):
     if not configurado():
         raise ValueError("Falta configurar ESPELHO_PLANILHA_ID e GOOGLE_CREDENTIALS_JSON no Railway.")
     import gspread
-    from google.oauth2.service_account import Credentials
-    cred = Credentials.from_service_account_info(json.loads(os.environ["GOOGLE_CREDENTIALS_JSON"]),
-                                                 scopes=["https://www.googleapis.com/auth/drive.readonly"])
-    dados = gspread.authorize(cred).export(PLANILHA_ID, format="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    dados = gspread.authorize(_cred()).export(PLANILHA_ID, format="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     with open(caminho, "wb") as f:
         f.write(dados)
     return caminho
@@ -194,12 +267,25 @@ def rotina():
         time.sleep(20)
         while True:
             try:
-                from db import engine, historico
+                from db import config_ler, engine, historico
+                liberado = config_ler(f"espelho_ok_{PLANILHA_ID}", "") == "1"
+                if liberado and DOIS_SENTIDOS:
+                    m = meta()
+                    mod = m.get("modifiedTime", "")
+                    if not os.path.exists(os.path.join(_pasta(), BASE)):
+                        ESTADO["historico_id"] = None  # primeira vez nos dois sentidos: escreve e guarda a base antes de ler
+                    elif mod and mod != config_ler("planilha_vista", ""):
+                        if time.time() - _ts(mod) < QUIETO:
+                            time.sleep(INTERVALO)  # alguém está mexendo na planilha: espera parar para não atropelar
+                            continue
+                        with _trava:
+                            trazer(m)
                 with engine.connect() as c:
                     hid = c.execute(select(func.max(historico.c.id))).scalar()
                 if hid != ESTADO["historico_id"]:
                     sincronizar()
             except Exception as e:
+                ESTADO["erro"] = f"{type(e).__name__}: {e}"[:400]
                 print("Falha ao conferir o espelho:", e, flush=True)
             time.sleep(INTERVALO)
     threading.Thread(target=loop, daemon=True, name="espelho").start()

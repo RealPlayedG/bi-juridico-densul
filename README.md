@@ -120,7 +120,11 @@ No Railway também dá para voltar a qualquer publicação anterior em Deploymen
 - Depois disso, o sistema passa a escrever na planilha original (ESPELHO_PLANILHA_ID = id da planilha Jurídico):
   reescreve as abas Cobrança e Processos Diversos cerca de 1 minuto depois de qualquer alteração, com os links do Drive
   (nota e boletos). Cabeçalho, totais, fórmulas e as outras abas ficam como estão.
-- A partir daí o trabalho é feito no BI. O que for digitado nessas duas abas da planilha é apagado na próxima atualização.
+- **Nos dois sentidos**: a cada minuto o sistema confere a planilha. Se foi editada e está parada há 2 minutos, traz para o BI
+  o que mudou desde a última escrita (status, valores, considerações viram andamento, custas novas ou com data trocada,
+  valor pago vira pagamento, linhas novas viram processos) e depois reescreve a planilha. No histórico aparece como
+  "Planilha Google (última edição: nome)". Mesmo campo mudado nos dois: fica o do BI e registra "Conflito com a planilha".
+  Linha apagada na planilha volta (excluir é pelo BI). Desligar: ESPELHO_DOIS_SENTIDOS=0.
 - Conta de serviço: bi-juridico@bi-juridico-densul-11041426.iam.gserviceaccount.com (projeto Google Cloud bi-juridico-densul-11041426,
   APIs Sheets e Drive). A chave fica em GOOGLE_CREDENTIALS_JSON no Railway. A planilha precisa estar compartilhada como Editor com esse e-mail.
 

@@ -1321,8 +1321,14 @@ def api_espelho():
 def api_espelho_agora():
     if not espelho.configurado():
         return jsonify(erro="A planilha espelho ainda não está configurada no Railway."), 400
+    try:  # antes de reescrever, traz o que tiver sido mexido na planilha
+        if espelho.DOIS_SENTIDOS and os.path.exists(os.path.join(espelho._pasta(), espelho.BASE)):
+            with espelho._trava:
+                espelho.trazer()
+    except Exception as e:  # noqa: BLE001
+        return jsonify(erro=f"Não consegui ler a planilha antes de atualizar: {e}"[:300]), 502
     with engine.begin() as c:
-        registrar(c, eu(), "Planilha espelho atualizada manualmente")
+        registrar(c, eu(), "Planilha atualizada manualmente")
     ok = espelho.sincronizar("manual")
     if not ok:
         return jsonify(erro="Não foi possível atualizar a planilha: " + (espelho.ESTADO["erro"] or "")), 502

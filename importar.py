@@ -150,7 +150,7 @@ def ler(caminho):
         if not cliente and not _txt(v("num")) and _num(v("valor")) is None:
             continue
         item = {
-            "tipo": "cobranca", "loja": loja_canonica(v("loja")), "carteira": _txt(v("carteira")), "ano": _ano(v("ano")),
+            "tipo": "cobranca", "linha": row[0].row, "loja": loja_canonica(v("loja")), "carteira": _txt(v("carteira")), "ano": _ano(v("ano")),
             "codigo_cliente": _txt(v("cod")), "parte": cliente, "documento": _txt(v("doc")).replace(" ", ""),
             "valor": _num(v("valor")), "status": _txt(v("status")), "numero": _txt(v("num")),
             "valor_acordo": _num(v("acordo")), "valor_pago": _num(v("pago")), "andamento": _txt(v("cons")),
@@ -184,7 +184,7 @@ def ler(caminho):
         if not num and not parte and not tem_custa:
             continue
         item = {
-            "tipo": "diversos", "identificacao": _txt(v("ident")), "numero": num, "tipo_acao": _txt(v("acao")),
+            "tipo": "diversos", "linha": row[0].row, "identificacao": _txt(v("ident")), "numero": num, "tipo_acao": _txt(v("acao")),
             "loja": loja_canonica(v("loja")), "uf": _txt(v("uf")).upper()[:2], "ano": _ano(v("ano")), "parte": parte,
             "teor": _txt(v("teor")), "status": _txt(v("status")), "valor": _num(v("valor")),
             "valor_pago": _num(v("pago")), "andamento": "", "anexos": [], "custas": [],
@@ -326,7 +326,17 @@ def planejar(itens, base_itens=None):
             if (x["tipo"], _chave(x.get("parte")), _chave(x.get("codigo_cliente"))) == alvo and id(x) not in usados and x.get("id") not in usados:
                 return x
         return None
-    plano = {"novos": [], "campos": [], "conflitos": [], "andamentos": [], "custas": [], "anexos": [], "ignorados": []}
+    plano = {"novos": [], "campos": [], "conflitos": [], "andamentos": [], "custas": [], "custas_alt": [], "pagamentos": [],
+             "anexos": [], "ignorados": []}
+    base_linha = {(b["tipo"], b.get("linha")): b for b in (base_itens or []) if b.get("linha")}
+    db_por_id = {x["id"]: x for x in db}
+    pago_db = {x["id"]: float(x.get("valor_pago") or 0) for x in db}
+    cus_db = {}
+    from sqlalchemy import select as sel2
+    with engine.connect() as c:
+        for r in c.execute(sel2(custas.c.id, custas.c.processo_id, custas.c.tipo, custas.c.vencimento).where(
+                custas.c.excluido.is_(False), custas.c.pago.is_(False))):
+            cus_db.setdefault(r.processo_id, []).append(r)
     _todas = set(_parear(itens).keys())
     for k, lst in _parear(itens).items():
         for i, it in enumerate(lst):
@@ -336,6 +346,14 @@ def planejar(itens, base_itens=None):
                 p = por_cliente(it, [x for x in db if x["id"] not in usados and _chaves(x) not in _todas])
                 if base is None:
                     base = por_cliente(it, [x for x in (base_itens or []) if _chaves(x) not in _todas])
+            if p is None and it.get("linha"):
+                # mesma linha da última versão, cujo processo sumiu da planilha: foi a linha que alguém editou (nº ou nome)
+                b = base_linha.get((it["tipo"], it["linha"]))
+                if b is not None and _chaves(b) not in _todas:
+                    kb = _chaves(b)
+                    cand = [x for x in pdb.get(kb, []) if x["id"] not in usados]
+                    if cand:
+                        p, base = cand[0], b
             if p is not None:
                 usados.add(p["id"])
             rotulo = f'{it.get("parte") or "(sem nome)"} ({it.get("numero") or "sem nº"})'
@@ -359,7 +377,7 @@ def planejar(itens, base_itens=None):
                 if not mudou_planilha:
                     continue  # quem mudou foi o BI: fica o do BI
                 item = {"processo_id": pid, "processo": rotulo, "campo": f, "nome": NOMES_MESCLA[f], "de": p.get(f), "para": novo}
-                if f == "numero":
+                if f == "numero" and p.get("numero"):
                     item["motivo"] = "nº do processo diferente: confira qual está certo"
                     plano["conflitos"].append(item)
                 elif mudou_bi or base is None:
@@ -371,9 +389,29 @@ def planejar(itens, base_itens=None):
                     (base is None or _chave(it["andamento"]) != _chave(base.get("andamento"))):
                 plano["andamentos"].append({"processo_id": pid, "processo": rotulo, "texto": it["andamento"]})
             for cu in it["custas"]:
-                ja = any((t == cu["tipo"] and v == cu["vencimento"]) or (cu["link"] and l == cu["link"]) for t, v, l in cus.get(pid, []))
-                if not ja:
+                def mesmo_tipo(t):  # a coluna "Custas - Serviço" (e a "Custas" dos diversos) junta vários tipos
+                    return t == cu["tipo"] or it["tipo"] == "diversos" or (cu["tipo"] == "Serviço" and t != "Inicial")
+                ja = any((mesmo_tipo(t) and v == cu["vencimento"]) or (cu["link"] and l == cu["link"]) for t, v, l in cus.get(pid, []))
+                if ja:
+                    continue
+                # data trocada na planilha: a custa em aberto do mesmo tipo que estava na versão anterior muda de data
+                antes = [b for b in (base or {}).get("custas", []) if b["tipo"] == cu["tipo"] and b["vencimento"]] if base else []
+                alvo = next((r for r in cus_db.get(pid, []) for b in antes if mesmo_tipo(r.tipo) and r.vencimento == b["vencimento"]), None)
+                if alvo is not None and cu["vencimento"]:
+                    plano["custas_alt"].append({"custa_id": alvo.id, "processo_id": pid, "processo": rotulo, "tipo": cu["tipo"],
+                                                "de": alvo.vencimento, "para": cu["vencimento"], "link": cu["link"]})
+                else:
                     plano["custas"].append({"processo_id": pid, "processo": rotulo, **cu})
+            # valor pago mexido na planilha: a diferença vira um pagamento (o valor pago do BI é a soma dos pagamentos)
+            if base is not None and it.get("valor_pago") is not None and not _igual(it.get("valor_pago"), base.get("valor_pago")) \
+                    and not _igual(it.get("valor_pago"), pago_db.get(pid, 0)):
+                if _igual(pago_db.get(pid, 0), base.get("valor_pago") or 0):
+                    dif = round(float(it["valor_pago"]) - pago_db.get(pid, 0), 2)
+                    if abs(dif) >= 0.01:
+                        plano["pagamentos"].append({"processo_id": pid, "processo": rotulo, "valor": dif})
+                else:
+                    plano["conflitos"].append({"processo_id": pid, "processo": rotulo, "campo": "valor_pago", "nome": "Valor pago",
+                                               "de": pago_db.get(pid), "para": it["valor_pago"], "motivo": "mudou no BI e na planilha"})
             for a in it["anexos"]:
                 if a["link"] and a["link"] not in links.get(pid, set()):
                     plano["anexos"].append({"processo_id": pid, "processo": rotulo, **a})
@@ -383,7 +421,7 @@ def planejar(itens, base_itens=None):
 def aplicar(plano, quem):
     """Grava o plano numa transação só. Cada mudança fica no histórico."""
     from sqlalchemy import update as upd
-    n = {"novos": 0, "campos": 0, "andamentos": 0, "custas": 0, "anexos": 0}
+    n = {"novos": 0, "campos": 0, "andamentos": 0, "custas": 0, "anexos": 0, "pagamentos": 0}
     if plano["novos"]:
         r = gravar(plano["novos"], quem, origem="atualização pela planilha")
         n["novos"] = r["processos"]
@@ -405,6 +443,28 @@ def aplicar(plano, quem):
                                                criado_em=agora(), excluido=False))
             registrar(conn, quem, "Custa trazida da planilha", cu["processo_id"], {"tipo": cu["tipo"], "vencimento": cu["vencimento"]})
             n["custas"] += 1
+        for cu in plano.get("custas_alt", []):
+            vals = {"vencimento": cu["para"]}
+            if cu["link"]:
+                vals["link"] = cu["link"]
+            conn.execute(upd(custas).where(custas.c.id == cu["custa_id"]).values(**vals))
+            registrar(conn, quem, "Vencimento de custa mudado na planilha", cu["processo_id"], {"tipo": cu["tipo"], "de": cu["de"], "para": cu["para"]})
+            n["custas"] += 1
+        if plano.get("pagamentos"):
+            from db import pagamentos as pg
+            from sqlalchemy import func as fn
+            for g in plano["pagamentos"]:
+                conn.execute(insert(pg).values(processo_id=g["processo_id"], data=agora().date(), valor=g["valor"],
+                                               descricao="Ajuste do valor pago feito na planilha", criado_por=(quem or {}).get("nome", "Planilha"),
+                                               criado_em=agora(), excluido=False))
+                tot = conn.execute(select(fn.sum(pg.c.valor)).where(pg.c.processo_id == g["processo_id"], pg.c.excluido.is_(False))).scalar()
+                conn.execute(upd(processos).where(processos.c.id == g["processo_id"]).values(valor_pago=round(float(tot), 2) if tot else None))
+                registrar(conn, quem, "Pagamento lançado pela planilha", g["processo_id"], {"valor": g["valor"], "total_pago": tot})
+                n["pagamentos"] += 1
+        for cf in plano["conflitos"]:
+            if cf.get("motivo") == "mudou no BI e na planilha":
+                registrar(conn, quem, "Conflito com a planilha: ficou o valor do BI", cf["processo_id"],
+                          {"campo": cf["nome"], "no_bi": cf["de"], "na_planilha": cf["para"]})
         for a in plano["anexos"]:
             conn.execute(insert(anexos).values(processo_id=a["processo_id"], categoria=a["categoria"], nome=a["nome"], link=a["link"],
                                                arquivo="", por="Planilha Jurídico", em=agora(), excluido=False))

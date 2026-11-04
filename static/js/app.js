@@ -503,13 +503,15 @@ function pagarForm(cid){
 }
 function mescHTML(r){
   const pl=r.plano,v=x=>x===null||x===undefined||x===''?'vazio':esc(String(x));
-  const tot=pl.novos.length+pl.campos.length+pl.andamentos.length+pl.custas.length+pl.anexos.length;
+  const tot=pl.novos.length+pl.campos.length+pl.andamentos.length+pl.custas.length+pl.anexos.length+(pl.custas_alt||[]).length+(pl.pagamentos||[]).length;
   const bloco=(t,l,f)=>l.length?`<div class="mesc-b"><h3>${t} <span class="muted">${l.length}</span></h3><ul>${l.map(f).join('')}</ul></div>`:'';
   return `<div class="mesc">${r.base?`<p class="hint">Comparando com a planilha de ${esc(r.base.slice(0,10).split('-').reverse().join('/'))}.</p>`:'<p class="hint">Sem planilha anterior para comparar: campos diferentes aparecem só para conferir.</p>'}
     ${tot?'':`<div class="box ok">${icon('check')}O sistema já está igual à planilha. Nada para trazer.</div>`}
     ${bloco('Processos novos',pl.novos,x=>`<li><b>${esc(x.parte||'(sem nome)')}</b> · ${esc(TIPO_NOME[x.tipo])} · ${esc(x.loja||'sem loja')} · ${esc(x.numero||'sem nº')}${x.n_custas?` · ${x.n_custas} custa${x.n_custas>1?'s':''}`:''}</li>`)}
     ${bloco('Campos que mudaram na planilha',pl.campos,x=>`<li><b>${esc(x.processo)}</b> · ${esc(x.nome)}: ${v(x.de)} › ${v(x.para)}</li>`)}
     ${bloco('Custas novas',pl.custas,x=>`<li><b>${esc(x.processo)}</b> · ${esc(x.tipo)}${x.vencimento?' · vence '+brDate(x.vencimento):''}${x.link?' · com boleto':''}</li>`)}
+    ${bloco('Vencimentos de custa alterados',pl.custas_alt||[],x=>`<li><b>${esc(x.processo)}</b> · ${esc(x.tipo)}: ${brDate(x.de)} › ${brDate(x.para)}</li>`)}
+    ${bloco('Pagamentos (valor pago mudou na planilha)',pl.pagamentos||[],x=>`<li><b>${esc(x.processo)}</b> · ${fmt(x.valor)}</li>`)}
     ${bloco('Andamentos novos',pl.andamentos,x=>`<li><b>${esc(x.processo)}</b> · ${esc(x.texto.slice(0,160))}</li>`)}
     ${bloco('Links novos (Drive)',pl.anexos,x=>`<li><b>${esc(x.processo)}</b> · ${esc(x.nome)}</li>`)}
     ${bloco('Para conferir (não muda nada sozinho)',pl.conflitos,x=>`<li><b>${esc(x.processo)}</b> · ${esc(x.nome)}: no BI ${v(x.de)}, na planilha ${v(x.para)} <span class="muted">(${esc(x.motivo)})</span></li>`)}
@@ -553,7 +555,7 @@ function admBody(){
     return `<section class="card"><div class="card-h"><h2>Planilha Jurídico</h2><span class="sub">atualizada pelo sistema</span><div class="tools">${e.configurado?`<button class="btn sm primary" data-espelho-agora="1">${icon('refresh-cw')}Atualizar agora</button>`:''}</div></div><div class="card-b" style="display:flex;flex-direction:column;gap:12px">
       ${e.url?`<a class="bk-item" href="${esc(e.url)}" target="_blank" rel="noopener">${icon('sheet')}<span>Abrir a planilha</span>${icon('external-link')}</a>`:''}
       ${!e.configurado?`<div class="box miss">${icon('alert-triangle')}Falta configurar no Railway: ESPELHO_PLANILHA_ID e GOOGLE_CREDENTIALS_JSON.</div>`:e.erro?`<div class="box miss">${icon('alert-triangle')}${esc(e.erro)}</div>`:e.ultima?`<div class="box ok">${icon('check')}Atualizada em ${brDT(e.ultima)} com ${e.linhas} processos.</div>`:`<div class="box">${icon('loader')}Aguardando a primeira atualização (até 1 minuto).</div>`}
-      <p class="hint">O sistema reescreve as abas Cobrança e Processos Diversos cerca de 1 minuto depois de qualquer alteração. Cabeçalho, totais e as outras abas ficam como estão. O que for digitado na planilha não volta para o sistema e é apagado na próxima atualização.</p></div></section>`;
+      <p class="hint">Funciona nos dois sentidos. O que mudar no BI vai para a planilha em cerca de 1 minuto. O que for mexido nas abas Cobrança e Processos Diversos da planilha vem para o BI quando ela fica 2 minutos sem edição (aparece no Histórico como "Planilha Google"). Se o mesmo campo mudar nos dois lugares, fica o do BI. Linha apagada na planilha volta: para excluir, use o BI. Cabeçalho, totais e as outras abas ficam como estão.</p></div></section>`;
   }
   if(S.adm==='importar'){
     if(!P.length)return `<section class="card"><div class="card-h"><h2>Importar planilha</h2></div><div class="card-b"><p class="hint">Envie a planilha Jurídico em .xlsx (no Google Sheets: Arquivo › Fazer download › Microsoft Excel). Entram as abas Cobrança e Processos Diversos, com notas, custas e links do Drive. Um backup é feito antes.</p><form id="f-imp" class="filters" style="padding:14px 0 0"><input type="file" id="imp-arq" accept=".xlsx" required><button class="btn primary">${icon('file-up')}Importar</button></form><div id="imp-res"></div></div></section>`;
