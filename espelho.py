@@ -45,11 +45,14 @@ def _num(v):
     return "" if v is None else float(v)
 
 
+SEP = {"v": ";"}  # separador de argumentos das fórmulas: depende do idioma da planilha (pt_BR usa ponto e vírgula)
+
+
 def _link(nome, link):
-    """Nome com o link do Drive (como na planilha original). Fórmulas pela API usam vírgula."""
+    """Nome com o link do Drive (como na planilha original)."""
     if not link:
         return nome
-    return '=HYPERLINK("{}","{}")'.format(link.replace('"', '""'), (nome or "Abrir").replace('"', '""'))
+    return '=HYPERLINK("{}"{}"{}")'.format(link.replace('"', '""'), SEP["v"], (nome or "Abrir").replace('"', '""'))
 
 
 def montar_linhas():
@@ -138,6 +141,8 @@ def sincronizar(motivo="alteracao"):
             cred = Credentials.from_service_account_info(json.loads(os.environ["GOOGLE_CREDENTIALS_JSON"]),
                                                          scopes=["https://www.googleapis.com/auth/spreadsheets"])
             planilha = gspread.authorize(cred).open_by_key(PLANILHA_ID)
+            loc = (planilha.fetch_sheet_metadata().get("properties", {}).get("locale") or "pt_BR").lower()
+            SEP["v"] = "," if loc.split("_")[0] in ("en", "ja", "zh", "ko", "th", "he", "iw") else ";"
             abas = {ws.title.strip().lower(): ws for ws in planilha.worksheets()}
             cob, div = montar_linhas()
             ws = abas.get("cobrança")

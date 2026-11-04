@@ -45,9 +45,14 @@ def loja_canonica(s):
     return LOJA_CANONICA.get(k, re.sub(r"\s+", " ", str(s)).strip().title())
 
 
+ERROS_PLANILHA = {"#error!", "#ref!", "#n/a", "#value!", "#name?", "#div/0!", "#num!", "#null!"}
+
+
 def _txt(v):
     if v is None:
         return ""
+    if isinstance(v, str) and v.strip().lower() in ERROS_PLANILHA:
+        return ""  # célula com erro de fórmula não vale como dado
     if isinstance(v, float) and v.is_integer():
         v = int(v)
     return re.sub(r"\s+", " ", str(v)).strip()
@@ -113,8 +118,23 @@ def _col(cab, *nomes):
     return None
 
 
+RX_HL = re.compile(r'^=\s*HYPERLINK\(\s*"((?:[^"]|"")*)"', re.I)
+
+
 def ler(caminho):
     wb = openpyxl.load_workbook(caminho, data_only=True)
+    wbf = openpyxl.load_workbook(caminho)  # com as fórmulas: links escritos pelo sistema vêm como =HYPERLINK(...)
+
+    def hl(cel):
+        """Link da célula: hyperlink normal ou fórmula HYPERLINK."""
+        if cel.hyperlink and cel.hyperlink.target:
+            return cel.hyperlink.target
+        try:
+            f = wbf[cel.parent.title].cell(cel.row, cel.column).value
+        except (KeyError, AttributeError):
+            return ""
+        m = RX_HL.match(f) if isinstance(f, str) else None
+        return m.group(1).replace('""', '"') if m else ""
     itens = []
     # ---------- Cobrança ----------
     ws = _aba(wb, "Cobrança")
@@ -136,15 +156,15 @@ def ler(caminho):
             "valor_acordo": _num(v("acordo")), "valor_pago": _num(v("pago")), "andamento": _txt(v("cons")),
             "anexos": [], "custas": [],
         }
-        lk = row[c["cliente"]].hyperlink if c["cliente"] is not None else None
-        if lk and lk.target:
-            item["anexos"].append({"categoria": "Nota", "nome": "Nota (Drive)", "link": lk.target})
+        lk = hl(row[c["cliente"]]) if c["cliente"] is not None else ""
+        if lk:
+            item["anexos"].append({"categoria": "Nota", "nome": "Nota (Drive)", "link": lk})
         for k, tipo in (("ci", "Inicial"), ("cs", "Serviço")):
             if c[k] is None:
                 continue
             cel = row[c[k]]
             dt = _data(cel.value)
-            link = cel.hyperlink.target if cel.hyperlink else ""
+            link = hl(cel)
             if dt or link or _txt(cel.value):
                 item["custas"].append({"tipo": tipo, "vencimento": dt, "link": link,
                                        "descricao": "" if dt else _txt(cel.value)})
@@ -160,7 +180,7 @@ def ler(caminho):
         v = lambda k: row[c[k]].value if c[k] is not None and c[k] < len(row) else None  # noqa: E731
         num, parte = _txt(v("num")), _txt(v("parte"))
         cel = row[c["custas"]] if c["custas"] is not None else None
-        tem_custa = cel is not None and (cel.value or cel.hyperlink)
+        tem_custa = cel is not None and (cel.value or hl(cel))
         if not num and not parte and not tem_custa:
             continue
         item = {
@@ -173,7 +193,7 @@ def ler(caminho):
             item["tipo_acao"] = item["tipo_acao"][0].upper() + item["tipo_acao"][1:].lower()
         if tem_custa:
             item["custas"].append({"tipo": "Inicial", "vencimento": _data(cel.value),
-                                   "link": cel.hyperlink.target if cel.hyperlink else "", "descricao": ""})
+                                   "link": hl(cel), "descricao": ""})
         itens.append(item)
     return itens
 
