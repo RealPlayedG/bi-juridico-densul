@@ -110,16 +110,17 @@ python restaurar.py /data/backups/<arquivo>.zip --confirmar
 **Código:** antes de cada alteração, a versão em uso é copiada para uma branch `backup/...` no GitHub.
 No Railway também dá para voltar a qualquer publicação anterior em Deployments > Redeploy.
 
-## Planilha espelho
+## Planilha Jurídico (a original)
 
-Cópia da planilha "Jurídico" que o sistema mantém atualizada (variáveis `ESPELHO_PLANILHA_ID` e
-`GOOGLE_CREDENTIALS_JSON`, a mesma conta de serviço do BI Evaristo, com acesso de editor na planilha).
-
-- Cerca de 1 minuto depois de qualquer alteração, o sistema reescreve as abas **Cobrança** e **Processos Diversos**
-  a partir da linha abaixo do cabeçalho. Cabeçalho, totais, formatação, listas de opções e as outras abas ficam como estão.
-- Considerações = último andamento. Custas - Inicial = próxima custa inicial em aberto; Custas - Serviço = próxima das demais.
-- É só leitura: o que for digitado nela não volta para o sistema e é apagado na atualização seguinte.
-- Administração > Planilha espelho mostra o link, a última atualização e o botão "Atualizar agora".
+- **Atualizar pela planilha** (Administração): envie a planilha em .xlsx. O sistema compara com o que tem e mostra antes o que
+  vai entrar: processos novos, custas e links novos, andamentos e campos que mudaram na planilha. Nada é apagado nem duplicado.
+  Se o mesmo campo mudou no BI e na planilha, fica o do BI e aparece em "Para conferir". Nº de processo diferente sempre vai
+  para conferir. Faz backup antes e guarda a planilha como base para a próxima comparação.
+- Depois disso, o sistema passa a escrever na planilha original (ESPELHO_PLANILHA_ID = id da planilha Jurídico):
+  reescreve as abas Cobrança e Processos Diversos cerca de 1 minuto depois de qualquer alteração, com os links do Drive
+  (nota e boletos). Cabeçalho, totais, fórmulas e as outras abas ficam como estão.
+- A partir daí o trabalho é feito no BI. O que for digitado nessas duas abas da planilha é apagado na próxima atualização.
+- Precisa de GOOGLE_CREDENTIALS_JSON (conta de serviço) no Railway, e a planilha compartilhada como Editor com o e-mail dessa conta.
 
 ## Rodar no computador
 

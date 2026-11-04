@@ -69,18 +69,22 @@ def montar_linhas():
         for r in c.execute(select(custas).where(custas.c.excluido.is_(False), custas.c.pago.is_(False)).order_by(custas.c.vencimento)).mappings():
             cs.setdefault(r["processo_id"], []).append(r)
 
+    def _cel(cu):
+        """Data do vencimento, com o link do boleto do Drive quando tiver (como na planilha original)."""
+        return _link(_br(cu["vencimento"]), cu["link"]) if cu["link"] else _br(cu["vencimento"])
+
     def proxima(pid):
         """Vencimento da próxima custa em aberto (qualquer tipo)."""
         for cu in cs.get(pid, []):
             if cu["vencimento"]:
-                return _br(cu["vencimento"])
+                return _cel(cu)
         return ""
 
     def custa(pid, inicial):
         """Custas - Inicial: tipo Inicial. Custas - Serviço: os demais tipos (serviço, cartório, complementar...)."""
         for cu in cs.get(pid, []):
             if cu["vencimento"] and ((cu["tipo"] == "Inicial") == inicial):
-                return _br(cu["vencimento"])
+                return _cel(cu)
         return ""
 
     cob, div = [], []

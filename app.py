@@ -1189,7 +1189,78 @@ def api_importar():
         return jsonify(erro=f"O sistema já tem {ja} processos. A importação adicionaria mais {len(itens)} (pode duplicar).", confirmar=True), 409
     backup.fazer("antes-da-importacao")
     n = importar.gravar(itens, eu())
+    with engine.begin() as c:
+        config_gravar(c, "planilha_base", os.path.basename(caminho))
     return jsonify(ok=True, **n, avisos=avisos)
+
+
+# ---------- atualizar pela planilha (mesclar) ----------
+
+def _pasta_imp():
+    p = os.path.join(PASTA_DADOS, "importacoes")
+    os.makedirs(os.path.join(p, "previas"), exist_ok=True)
+    return p
+
+
+def _planilha_base():
+    """Planilha da última importação/atualização aplicada: serve para saber o que mudou na planilha e o que mudou no BI."""
+    pasta = _pasta_imp()
+    nome = config_ler("planilha_base", "")
+    if nome and os.path.exists(os.path.join(pasta, nome)):
+        return os.path.join(pasta, nome)
+    xs = sorted(x for x in os.listdir(pasta) if x.lower().endswith(".xlsx"))
+    return os.path.join(pasta, xs[-1]) if xs else None
+
+
+def _plano_json(pl):
+    def v(x):
+        return x.isoformat() if hasattr(x, "isoformat") else (float(x) if hasattr(x, "as_tuple") else x)
+    out = {k: [{kk: v(vv) for kk, vv in it.items() if kk not in ("anexos", "custas", "duplicado")} for it in lst] for k, lst in pl.items()}
+    for it, orig in zip(out["novos"], pl["novos"]):
+        it["n_custas"], it["n_anexos"] = len(orig["custas"]), len(orig["anexos"])
+    return out
+
+
+@app.post("/api/importar/previa")
+@logado
+@so("admin")
+def api_importar_previa():
+    import importar
+    arq = request.files.get("arquivo")
+    if not arq or not arq.filename.lower().endswith(".xlsx"):
+        return jsonify(erro="Envie a planilha em .xlsx (no Google Sheets: Arquivo > Fazer download > Microsoft Excel)."), 400
+    nome = f"{agora().strftime('%Y-%m-%d_%H%M%S')}_{secure_filename(arq.filename)}"
+    caminho = os.path.join(_pasta_imp(), "previas", nome)
+    arq.save(caminho)
+    try:
+        itens, avisos = importar.limpar(importar.ler(caminho))
+        base = _planilha_base()
+        base_itens = importar.limpar(importar.ler(base))[0] if base else None
+        pl = importar.planejar(itens, base_itens)
+    except ValueError as e:
+        return jsonify(erro=str(e)), 400
+    return jsonify(arquivo=nome, base=os.path.basename(base) if base else None, plano=_plano_json(pl), avisos=avisos)
+
+
+@app.post("/api/importar/aplicar")
+@logado
+@so("admin")
+def api_importar_aplicar():
+    import importar
+    nome = os.path.basename(str(corpo().get("arquivo", "")))
+    caminho = os.path.join(_pasta_imp(), "previas", nome)
+    if not nome or not os.path.exists(caminho):
+        return jsonify(erro="Envie a planilha de novo."), 400
+    itens, _ = importar.limpar(importar.ler(caminho))
+    base = _planilha_base()
+    base_itens = importar.limpar(importar.ler(base))[0] if base else None
+    pl = importar.planejar(itens, base_itens)  # refaz na hora, com o sistema como está agora
+    backup.fazer("antes-de-atualizar-pela-planilha")
+    n = importar.aplicar(pl, eu())
+    os.replace(caminho, os.path.join(_pasta_imp(), nome))
+    with engine.begin() as c:
+        config_gravar(c, "planilha_base", nome)
+    return jsonify(ok=True, **n, conflitos=len(pl["conflitos"]))
 
 
 # ---------- backups (administrador) ----------

@@ -501,6 +501,21 @@ function pagarForm(cid){
   box.innerHTML=`<form class="aud-fin" id="f-pagar" data-cid="${cid}"><label for="pg-arq">Comprovante de pagamento <span class="muted">opcional, pode anexar depois</span></label><input type="file" id="pg-arq" accept=".pdf,image/*"><div class="acts"><button type="button" class="btn sm" data-pg-cancel="1">Cancelar</button><button class="btn sm primary">${icon('check')}Confirmar pagamento</button></div></form>`;
   drawIcons();box.scrollIntoView({block:'nearest',behavior:'smooth'});
 }
+function mescHTML(r){
+  const pl=r.plano,v=x=>x===null||x===undefined||x===''?'vazio':esc(String(x));
+  const tot=pl.novos.length+pl.campos.length+pl.andamentos.length+pl.custas.length+pl.anexos.length;
+  const bloco=(t,l,f)=>l.length?`<div class="mesc-b"><h3>${t} <span class="muted">${l.length}</span></h3><ul>${l.map(f).join('')}</ul></div>`:'';
+  return `<div class="mesc">${r.base?`<p class="hint">Comparando com a planilha de ${esc(r.base.slice(0,10).split('-').reverse().join('/'))}.</p>`:'<p class="hint">Sem planilha anterior para comparar: campos diferentes aparecem só para conferir.</p>'}
+    ${tot?'':`<div class="box ok">${icon('check')}O sistema já está igual à planilha. Nada para trazer.</div>`}
+    ${bloco('Processos novos',pl.novos,x=>`<li><b>${esc(x.parte||'(sem nome)')}</b> · ${esc(TIPO_NOME[x.tipo])} · ${esc(x.loja||'sem loja')} · ${esc(x.numero||'sem nº')}${x.n_custas?` · ${x.n_custas} custa${x.n_custas>1?'s':''}`:''}</li>`)}
+    ${bloco('Campos que mudaram na planilha',pl.campos,x=>`<li><b>${esc(x.processo)}</b> · ${esc(x.nome)}: ${v(x.de)} › ${v(x.para)}</li>`)}
+    ${bloco('Custas novas',pl.custas,x=>`<li><b>${esc(x.processo)}</b> · ${esc(x.tipo)}${x.vencimento?' · vence '+brDate(x.vencimento):''}${x.link?' · com boleto':''}</li>`)}
+    ${bloco('Andamentos novos',pl.andamentos,x=>`<li><b>${esc(x.processo)}</b> · ${esc(x.texto.slice(0,160))}</li>`)}
+    ${bloco('Links novos (Drive)',pl.anexos,x=>`<li><b>${esc(x.processo)}</b> · ${esc(x.nome)}</li>`)}
+    ${bloco('Para conferir (não muda nada sozinho)',pl.conflitos,x=>`<li><b>${esc(x.processo)}</b> · ${esc(x.nome)}: no BI ${v(x.de)}, na planilha ${v(x.para)} <span class="muted">(${esc(x.motivo)})</span></li>`)}
+    ${bloco('Fora da atualização',pl.ignorados,x=>`<li><b>${esc(x.processo)}</b> <span class="muted">(${esc(x.motivo)})</span></li>`)}
+    ${tot?`<div class="acts" style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px"><button class="btn primary" data-mesc-ok="${esc(r.arquivo)}">${icon('check')}Aplicar ${tot} ${tot===1?'mudança':'mudanças'}</button></div>`:''}</div>`;
+}
 async function enviarAnexo(pid,cid,cat,files,link){
   const fd=new FormData();[...(files||[])].forEach(f=>fd.append('arquivo',f));if(link)fd.append('link',link);fd.append('categoria',cat);if(cid)fd.append('custa_id',cid);
   return api(`/api/processos/${pid}/anexos`,{method:'POST',body:fd});
@@ -510,7 +525,7 @@ async function enviarAnexo(pid,cid,cat,files,link){
 let ADM={usuarios:null,historico:null,backups:null,espelho:null,apres:null};
 function pgAdmin(){
   if(!isAdmin)return '<p class="empty">Sem acesso.</p>';
-  const tabs=[['usuarios','Usuários','users'],['lojas','Lojas','store'],['historico','Histórico','history'],['backups','Backups','archive'],['espelho','Planilha espelho','sheet'],['importar','Importar planilha','file-up']];
+  const tabs=[['usuarios','Usuários','users'],['lojas','Lojas','store'],['historico','Histórico','history'],['backups','Backups','archive'],['espelho','Planilha','sheet'],['importar',P.length?'Atualizar pela planilha':'Importar planilha','file-up']];
   return `<div class="ph"><div><h1>Administração</h1></div></div><div>${mseg('adm',tabs)}</div><div id="adm">${admBody()}</div>`;
 }
 function admBody(){
@@ -534,12 +549,15 @@ function admBody(){
   }
   if(S.adm==='espelho'){
     const e=ADM.espelho;if(!e)return '<div class="loading" style="min-height:160px"><span class="spin"></span></div>';
-    return `<section class="card"><div class="card-h"><h2>Planilha espelho</h2><span class="sub">cópia da planilha Jurídico, atualizada pelo sistema</span><div class="tools">${e.configurado?`<button class="btn sm primary" data-espelho-agora="1">${icon('refresh-cw')}Atualizar agora</button>`:''}</div></div><div class="card-b" style="display:flex;flex-direction:column;gap:12px">
-      ${e.url?`<a class="bk-item" href="${esc(e.url)}" target="_blank" rel="noopener">${icon('sheet')}<span>Abrir a planilha espelho</span>${icon('external-link')}</a>`:''}
+    return `<section class="card"><div class="card-h"><h2>Planilha Jurídico</h2><span class="sub">atualizada pelo sistema</span><div class="tools">${e.configurado?`<button class="btn sm primary" data-espelho-agora="1">${icon('refresh-cw')}Atualizar agora</button>`:''}</div></div><div class="card-b" style="display:flex;flex-direction:column;gap:12px">
+      ${e.url?`<a class="bk-item" href="${esc(e.url)}" target="_blank" rel="noopener">${icon('sheet')}<span>Abrir a planilha</span>${icon('external-link')}</a>`:''}
       ${!e.configurado?`<div class="box miss">${icon('alert-triangle')}Falta configurar no Railway: ESPELHO_PLANILHA_ID e GOOGLE_CREDENTIALS_JSON.</div>`:e.erro?`<div class="box miss">${icon('alert-triangle')}${esc(e.erro)}</div>`:e.ultima?`<div class="box ok">${icon('check')}Atualizada em ${brDT(e.ultima)} com ${e.linhas} processos.</div>`:`<div class="box">${icon('loader')}Aguardando a primeira atualização (até 1 minuto).</div>`}
       <p class="hint">O sistema reescreve as abas Cobrança e Processos Diversos cerca de 1 minuto depois de qualquer alteração. Cabeçalho, totais e as outras abas ficam como estão. O que for digitado na planilha não volta para o sistema e é apagado na próxima atualização.</p></div></section>`;
   }
-  if(S.adm==='importar')return `<section class="card"><div class="card-h"><h2>Importar planilha</h2></div><div class="card-b"><p class="hint">Envie a planilha Jurídico em .xlsx (no Google Sheets: Arquivo › Fazer download › Microsoft Excel). Entram as abas Cobrança e Processos Diversos, com notas, custas e links do Drive. Um backup é feito antes.</p><form id="f-imp" class="filters" style="padding:14px 0 0"><input type="file" id="imp-arq" accept=".xlsx" required><button class="btn primary">${icon('file-up')}Importar</button></form><div id="imp-res"></div></div></section>`;
+  if(S.adm==='importar'){
+    if(!P.length)return `<section class="card"><div class="card-h"><h2>Importar planilha</h2></div><div class="card-b"><p class="hint">Envie a planilha Jurídico em .xlsx (no Google Sheets: Arquivo › Fazer download › Microsoft Excel). Entram as abas Cobrança e Processos Diversos, com notas, custas e links do Drive. Um backup é feito antes.</p><form id="f-imp" class="filters" style="padding:14px 0 0"><input type="file" id="imp-arq" accept=".xlsx" required><button class="btn primary">${icon('file-up')}Importar</button></form><div id="imp-res"></div></div></section>`;
+    return `<section class="card"><div class="card-h"><h2>Atualizar pela planilha</h2></div><div class="card-b"><p class="hint">Envie a planilha Jurídico em .xlsx (no Google Sheets: Arquivo › Fazer download › Microsoft Excel). O sistema compara com o que já tem e mostra antes o que vai entrar: processos novos, custas e links novos, e campos que mudaram na planilha. Nada é apagado nem duplicado. Se o mesmo campo foi mudado no BI e na planilha, fica o do BI e aparece para você conferir. Um backup é feito antes de aplicar.</p><form id="f-mesc" class="filters" style="padding:14px 0 0"><input type="file" id="mesc-arq" accept=".xlsx" required><button class="btn primary">${icon('search')}Ver o que muda</button></form><div id="mesc-res"></div></div></section>`;
+  }
   return '';
 }
 function histQS(extra){const F=ADM.hf||{};const q=new URLSearchParams();if(F.usuario)q.set('usuario',F.usuario);if(F.q)q.set('q',F.q);if(extra)Object.entries(extra).forEach(([k,v])=>q.set(k,v));const t=q.toString();return t?'?'+t:''}
@@ -641,6 +659,8 @@ document.addEventListener('click',async e=>{
       <div class="fld"><label for="pg-comp">Comprovante <span class="muted">opcional</span></label><input type="file" id="pg-comp" accept=".pdf,image/*"></div></div>
       <div class="acts"><button type="button" class="btn sm" data-pg-cancel="1">Cancelar</button><button class="btn sm primary">${icon('check')}Lançar pagamento</button></div></form>`;drawIcons();$('#pg-valor').focus();return}
   if(d.delPag){if(!confirma(t,icon('check')))return;await salvar(()=>api('/api/pagamentos/'+d.delPag,{method:'DELETE'}),'Pagamento excluído.');openProc(ABERTO);return}
+  if(d.mescOk){t.disabled=true;const r=await salvar(()=>api('/api/importar/aplicar',{method:'POST',body:{arquivo:d.mescOk}}));
+    $('#mesc-res').innerHTML=`<div class="box ok" style="margin-top:14px">${icon('check')}Pronto: ${r.novos} processos novos, ${r.campos} campos, ${r.custas} custas, ${r.andamentos} andamentos e ${r.anexos} links trazidos da planilha.${r.conflitos?` ${r.conflitos} para conferir ficaram como estavam no BI.`:''} Tudo está no Histórico.</div>`;drawIcons();return}
   if(d.anexarCusta){anexoForm(ABERTO,+d.anexarCusta,d.cat);return}
   if(d.fecharForm){$('#'+d.fecharForm).innerHTML='';return}
   if(d.delAnexo){if(!confirma(t,icon('check')))return;await salvar(()=>api('/api/anexos/'+d.delAnexo,{method:'DELETE'}),'Anexo removido.');openProc(ABERTO);return}
@@ -702,6 +722,8 @@ document.addEventListener('submit',async e=>{
       else await salvar(()=>api(`/api/processos/${f.dataset.pid}/audiencias`,{method:'POST',body}),'Audiência marcada.');
       openProc(+f.dataset.pid)}
     if(f.id==='f-loja'){await salvar(()=>api('/api/lojas',{method:'POST',body:{nome:$('#lj-nome').value,uf:$('#lj-uf').value,regional:$('#lj-reg').value}}),'Loja adicionada.')}
+    if(f.id==='f-mesc'){const fd=new FormData();fd.append('arquivo',$('#mesc-arq').files[0]);$('#mesc-res').innerHTML='<div class="loading" style="min-height:80px"><span class="spin"></span></div>';
+      const r=await api('/api/importar/previa',{method:'POST',body:fd});$('#mesc-res').innerHTML=mescHTML(r);drawIcons();return}
     if(f.id==='f-imp'){const fd=new FormData();fd.append('arquivo',$('#imp-arq').files[0]);
       let r;try{r=await api('/api/importar',{method:'POST',body:fd})}catch(er){if(er.dados&&er.dados.confirmar&&confirm(er.message+' Continuar mesmo assim?')){fd.append('confirmar','sim');r=await api('/api/importar',{method:'POST',body:fd})}else throw er}
       $('#imp-res').innerHTML=`<div class="box ok" style="margin-top:14px">${icon('check')}${r.processos} processos, ${r.custas} custas e ${r.anexos} anexos importados.</div>${r.avisos.length?`<ul class="hint">${r.avisos.map(a=>`<li>${esc(a)}</li>`).join('')}</ul>`:''}`;drawIcons();await refresh(true)}

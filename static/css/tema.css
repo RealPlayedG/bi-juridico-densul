@@ -395,3 +395,9 @@ a.lk svg{width:13px;height:13px;flex:none}
 .cbox.is-trab{border-color:var(--neg);box-shadow:0 0 0 1px var(--neg) inset}
 .ev.au.trab{background:var(--neg);color:#fff;font-weight:600}
 .dots i.au.trab{background:var(--neg)}
+
+/* Atualizar pela planilha: prévia */
+.mesc{display:flex;flex-direction:column;gap:10px;margin-top:14px}
+.mesc-b{border:1px solid var(--line);border-radius:10px;padding:10px 14px}
+.mesc-b h3{font-size:13.5px;font-weight:600;margin:0 0 6px}
+.mesc-b ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:3px;font-size:13px;max-height:260px;overflow:auto}

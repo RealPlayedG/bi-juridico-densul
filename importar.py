@@ -243,6 +243,157 @@ def gravar(itens, quem, origem="planilha"):
     return n
 
 
+# ---------- atualizar pela planilha (mesclar, sem duplicar) ----------
+
+CAMPOS_MESCLA = ("loja", "uf", "carteira", "ano", "codigo_cliente", "parte", "documento", "identificacao", "tipo_acao", "numero",
+                 "status", "valor", "valor_acordo", "teor")
+NOMES_MESCLA = {"loja": "Loja", "uf": "UF", "carteira": "Carteira", "ano": "Ano", "codigo_cliente": "Código do cliente",
+                "parte": "Cliente / parte", "documento": "CNPJ / CPF", "identificacao": "Identificação", "tipo_acao": "Tipo de ação",
+                "numero": "Nº do processo", "status": "Status", "valor": "Valor", "valor_acordo": "Valor do acordo", "teor": "Teor"}
+
+
+def _igual(a, b):
+    if isinstance(a, (int, float)) or isinstance(b, (int, float)) or (a is not None and hasattr(a, "as_tuple")) or (b is not None and hasattr(b, "as_tuple")):
+        try:
+            return (a in (None, "") and b in (None, "")) or (a not in (None, "") and b not in (None, "") and abs(float(a) - float(b)) < 0.005)
+        except (TypeError, ValueError):
+            return False
+    return _chave(a) == _chave(b)
+
+
+def _chaves(it):
+    """Como achar o mesmo processo: pelo nº do processo; sem nº, pelo cliente + código."""
+    num = _chave(it.get("numero"))
+    if num:
+        return (it["tipo"], "n", num)
+    return (it["tipo"], "p", _chave(it.get("parte")), _chave(it.get("codigo_cliente")))
+
+
+def _parear(lista):
+    """{chave: [itens na ordem]}: o mesmo nº em duas linhas pareia 1ª com 1ª, 2ª com 2ª."""
+    d = {}
+    for it in lista:
+        d.setdefault(_chaves(it), []).append(it)
+    return d
+
+
+def planejar(itens, base_itens=None):
+    """Compara a planilha com o sistema (e com a planilha da última importação, se houver) e devolve o que fazer.
+    Regra: o que mudou na planilha entra no sistema, a não ser que alguém já tenha mudado o mesmo campo no BI
+    (aí fica o do BI e aparece como conflito). Nada é apagado."""
+    from sqlalchemy import select as sel
+    with engine.connect() as c:
+        db = [dict(r._mapping) for r in c.execute(sel(processos).where(processos.c.excluido.is_(False)).order_by(processos.c.id))]
+        excl = [dict(r._mapping) for r in c.execute(sel(processos).where(processos.c.excluido.is_(True)))]
+        ands = {}
+        for r in c.execute(sel(andamentos.c.processo_id, andamentos.c.texto)):
+            ands.setdefault(r.processo_id, set()).add(_chave(r.texto))
+        cus = {}
+        for r in c.execute(sel(custas.c.processo_id, custas.c.tipo, custas.c.vencimento, custas.c.link).where(custas.c.excluido.is_(False))):
+            cus.setdefault(r.processo_id, []).append((r.tipo, r.vencimento, r.link or ""))
+        links = {}
+        for r in c.execute(sel(anexos.c.processo_id, anexos.c.link).where(anexos.c.excluido.is_(False))):
+            links.setdefault(r.processo_id, set()).add(r.link or "")
+    pdb, pex = _parear(db), _parear(excl)
+    pbase = _parear(base_itens or [])
+    usados = set()
+    def por_cliente(it, lista):
+        """Sem achar pelo nº (nº mudou ou foi digitado errado): mesmo cliente + código, ainda não pareado."""
+        alvo = (it["tipo"], _chave(it.get("parte")), _chave(it.get("codigo_cliente")))
+        if not alvo[1]:
+            return None
+        for x in lista:
+            if (x["tipo"], _chave(x.get("parte")), _chave(x.get("codigo_cliente"))) == alvo and id(x) not in usados and x.get("id") not in usados:
+                return x
+        return None
+    plano = {"novos": [], "campos": [], "conflitos": [], "andamentos": [], "custas": [], "anexos": [], "ignorados": []}
+    _todas = set(_parear(itens).keys())
+    for k, lst in _parear(itens).items():
+        for i, it in enumerate(lst):
+            base = pbase.get(k, [None] * (i + 1))[i] if i < len(pbase.get(k, [])) else None
+            p = pdb.get(k, [])[i] if i < len(pdb.get(k, [])) else None
+            if p is None:
+                p = por_cliente(it, [x for x in db if x["id"] not in usados and _chaves(x) not in _todas])
+                if base is None:
+                    base = por_cliente(it, [x for x in (base_itens or []) if _chaves(x) not in _todas])
+            if p is not None:
+                usados.add(p["id"])
+            rotulo = f'{it.get("parte") or "(sem nome)"} ({it.get("numero") or "sem nº"})'
+            if p is None:
+                if i < len(pex.get(k, [])) or base is not None:
+                    plano["ignorados"].append({"processo": rotulo, "motivo": "foi excluído no BI ou mudou de nº no BI; não volta"})
+                else:
+                    plano["novos"].append(it)
+                continue
+            pid = p["id"]
+            for f in CAMPOS_MESCLA:
+                novo = it.get(f)
+                if f == "uf" and it["tipo"] == "cobranca":
+                    continue
+                if novo in (None, "") and p.get(f) not in (None, ""):
+                    continue  # célula vazia na planilha não apaga o que tem no BI
+                if _igual(novo, p.get(f)):
+                    continue
+                mudou_planilha = base is None or not _igual(novo, base.get(f))
+                mudou_bi = base is not None and not _igual(p.get(f), base.get(f))
+                if not mudou_planilha:
+                    continue  # quem mudou foi o BI: fica o do BI
+                item = {"processo_id": pid, "processo": rotulo, "campo": f, "nome": NOMES_MESCLA[f], "de": p.get(f), "para": novo}
+                if f == "numero":
+                    item["motivo"] = "nº do processo diferente: confira qual está certo"
+                    plano["conflitos"].append(item)
+                elif mudou_bi or base is None:
+                    item["motivo"] = "mudou no BI e na planilha" if mudou_bi else "sem a planilha anterior para comparar"
+                    plano["conflitos"].append(item)
+                else:
+                    plano["campos"].append(item)
+            if it.get("andamento") and _chave(it["andamento"]) not in ands.get(pid, set()) and \
+                    (base is None or _chave(it["andamento"]) != _chave(base.get("andamento"))):
+                plano["andamentos"].append({"processo_id": pid, "processo": rotulo, "texto": it["andamento"]})
+            for cu in it["custas"]:
+                ja = any((t == cu["tipo"] and v == cu["vencimento"]) or (cu["link"] and l == cu["link"]) for t, v, l in cus.get(pid, []))
+                if not ja:
+                    plano["custas"].append({"processo_id": pid, "processo": rotulo, **cu})
+            for a in it["anexos"]:
+                if a["link"] and a["link"] not in links.get(pid, set()):
+                    plano["anexos"].append({"processo_id": pid, "processo": rotulo, **a})
+    return plano
+
+
+def aplicar(plano, quem):
+    """Grava o plano numa transação só. Cada mudança fica no histórico."""
+    from sqlalchemy import update as upd
+    n = {"novos": 0, "campos": 0, "andamentos": 0, "custas": 0, "anexos": 0}
+    if plano["novos"]:
+        r = gravar(plano["novos"], quem, origem="atualização pela planilha")
+        n["novos"] = r["processos"]
+    with engine.begin() as conn:
+        por_proc = {}
+        for m in plano["campos"]:
+            por_proc.setdefault(m["processo_id"], []).append(m)
+        for pid, ms in por_proc.items():
+            conn.execute(upd(processos).where(processos.c.id == pid).values(**{m["campo"]: m["para"] for m in ms}, atualizado_em=agora()))
+            registrar(conn, quem, "Atualizado pela planilha", pid, [{"campo": m["nome"], "de": m["de"], "para": m["para"]} for m in ms])
+            n["campos"] += len(ms)
+        for a in plano["andamentos"]:
+            conn.execute(insert(andamentos).values(processo_id=a["processo_id"], texto=a["texto"], por="Planilha Jurídico", em=agora()))
+            registrar(conn, quem, "Andamento trazido da planilha", a["processo_id"], a["texto"][:300])
+            n["andamentos"] += 1
+        for cu in plano["custas"]:
+            conn.execute(insert(custas).values(processo_id=cu["processo_id"], tipo=cu["tipo"], descricao=cu["descricao"], valor=None,
+                                               vencimento=cu["vencimento"], link=cu["link"], pago=False, criado_por="Planilha Jurídico",
+                                               criado_em=agora(), excluido=False))
+            registrar(conn, quem, "Custa trazida da planilha", cu["processo_id"], {"tipo": cu["tipo"], "vencimento": cu["vencimento"]})
+            n["custas"] += 1
+        for a in plano["anexos"]:
+            conn.execute(insert(anexos).values(processo_id=a["processo_id"], categoria=a["categoria"], nome=a["nome"], link=a["link"],
+                                               arquivo="", por="Planilha Jurídico", em=agora(), excluido=False))
+            registrar(conn, quem, "Anexo trazido da planilha", a["processo_id"], {"link": a["link"]})
+            n["anexos"] += 1
+        registrar(conn, quem, "Atualização pela planilha", detalhes={**n, "conflitos": len(plano["conflitos"]), "ignorados": len(plano["ignorados"])})
+    return n
+
+
 if __name__ == "__main__":
     import sys
     from db import criar_tabelas
