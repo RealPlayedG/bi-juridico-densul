@@ -42,6 +42,10 @@ def loja_canonica(s):
     k = _chave(s)
     if not k or k == "none":
         return ""
+    from db import FILIAIS, chave_loja
+    nomes = {chave_loja(n): n for _, n, _ in FILIAIS}
+    if chave_loja(s) in nomes:  # nome oficial da filial (com acento e hífen certos)
+        return nomes[chave_loja(s)]
     return LOJA_CANONICA.get(k, re.sub(r"\s+", " ", str(s)).strip().title())
 
 

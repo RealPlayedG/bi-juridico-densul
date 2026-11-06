@@ -184,6 +184,36 @@ def _pagamentos_iniciais():
 _pagamentos_iniciais()
 
 
+def _filiais():
+    """Garante todas as filiais da lista (db.FILIAIS) no cadastro de lojas, com código, UF e regional.
+    Loja que já existe (mesmo nome, sem ligar para acento/hífen) só ganha o que estiver vazio. Nenhuma é apagada."""
+    from db import FILIAIS, chave_loja
+    with engine.begin() as c:
+        atuais = {chave_loja(r.nome): r for r in c.execute(select(lojas)).all()}
+        novas, ajustes = [], []
+        for cod, nome, uf in FILIAIS:
+            r = atuais.get(chave_loja(nome))
+            if r is None:
+                c.execute(insert(lojas).values(nome=nome, uf=uf, regional=regional_da_loja(nome), codigo=cod))
+                novas.append(nome)
+                continue
+            vals = {}
+            if (r.codigo or "") != cod:
+                vals["codigo"] = cod
+            if not r.uf and uf:
+                vals["uf"] = uf
+            if not r.regional and regional_da_loja(r.nome):
+                vals["regional"] = regional_da_loja(r.nome)
+            if vals:
+                c.execute(update(lojas).where(lojas.c.id == r.id).values(**vals))
+                ajustes.append(r.nome)
+        if novas or ajustes:
+            registrar(c, None, "Lojas conferidas com a lista de filiais", detalhes={"novas": novas, "ajustadas": ajustes})
+
+
+_filiais()
+
+
 # ---------- usuário logado ----------
 
 def _usuario(uid):

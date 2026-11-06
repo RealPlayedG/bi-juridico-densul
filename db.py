@@ -15,6 +15,7 @@ DATABASE_URL, usa um arquivo SQLite em data/local.db.
 """
 
 import json
+import re
 import os
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -65,6 +66,7 @@ lojas = Table(
     Column("nome", String(80), unique=True, nullable=False),
     Column("uf", String(2), default=""),
     Column("regional", String(40), default=""),
+    Column("codigo", String(20), default=""),               # código da filial na Densul
 )
 
 processos = Table(
@@ -220,10 +222,32 @@ REGIONAIS = {
 REGIONAIS_ANTIGAS = {"Goiás", "PI / ES / RN", "PA", "MG", "MT / MS", "MA", "TO", "RJ", "SUL", "AP", "Brasília"}
 
 
+def chave_loja(nome):
+    """Nome sem acento, maiúscula, espaço ou hífen: "Ji-Paraná" = "JI PARANA"."""
+    import unicodedata
+    return re.sub(r"[^a-z0-9]", "", unicodedata.normalize("NFKD", str(nome or "")).encode("ascii", "ignore").decode().lower())
+
+
+# Filiais da Densul (lista enviada em 06/11/2026): código, nome e UF da cidade
+FILIAIS = [
+    ("1", "Matriz", ""), ("33369", "Castelo", "GO"), ("38239", "Anápolis", "GO"), ("41", "Brasília", "DF"),
+    ("42227", "Rio Verde", "GO"), ("57132", "Bueno", "GO"), ("49528", "Atacado", ""), ("18588", "Imperatriz", "MA"),
+    ("35274", "São Luís", "MA"), ("49256", "Balsas", "MA"), ("16159", "Uberlândia", "MG"), ("46491", "Contagem", "MG"),
+    ("55030", "Campo Grande", "MS"), ("17838", "Cuiabá", "MT"), ("26896", "Água Boa", "MT"), ("27549", "Rondonópolis", "MT"),
+    ("32322", "Sinop", "MT"), ("42380", "Confresa", "MT"), ("49258", "Dourados", "MS"), ("48986", "CD-MT", "MT"),
+    ("2933", "Macapá", "AP"), ("4307", "Marabá", "PA"), ("18873", "Ananindeua", "PA"), ("35527", "Santarém", "PA"),
+    ("36119", "Redenção", "PA"), ("43228", "Castanhal", "PA"), ("55010", "Teresina", "PI"), ("49154", "Serra", "ES"),
+    ("33056", "Foz", "PR"), ("61672", "Curitiba", "PR"), ("172", "Magnético", ""), ("59080", "Bauru", "SP"),
+    ("13462", "Florianópolis", "SC"), ("12378", "Palmas", "TO"), ("39052", "Araguaína", "TO"), ("46794", "Gurupi", "TO"),
+    ("33152", "Rio de Janeiro", "RJ"), ("49152", "Mossoró", "RN"), ("51085", "Recife", "PE"), ("52095", "Salvador", "BA"),
+    ("79577", "Ji-Paraná", "RO"),
+]
+
+
 def regional_da_loja(nome):
     """Regional de uma loja pelo nome (sem diferença de acento ou maiúscula). Vazio se não estiver na lista."""
     import unicodedata
-    k = lambda x: unicodedata.normalize("NFKD", str(x)).encode("ascii", "ignore").decode().lower().strip()  # noqa: E731
+    k = lambda x: re.sub(r"[^a-z0-9]", "", unicodedata.normalize("NFKD", str(x)).encode("ascii", "ignore").decode().lower())  # noqa: E731
     for reg, ls in REGIONAIS.items():
         if k(nome) in {k(x) for x in ls}:
             return reg
@@ -241,6 +265,7 @@ COLUNAS_NOVAS = [  # (tabela, coluna, tipo SQL): criadas sozinhas na subida, em 
     ("processos", "motivo_recusa", "TEXT DEFAULT ''"),
     ("andamentos", "audiencia_id", "INTEGER"),
     ("anexos", "pagamento_id", "INTEGER"),
+    ("lojas", "codigo", "VARCHAR(20) DEFAULT ''"),
     ("audiencias", "finalizada", "BOOLEAN DEFAULT FALSE"),
     ("audiencias", "finalizada_em", "TIMESTAMP"),
     ("audiencias", "finalizada_por", "VARCHAR(120) DEFAULT ''"),
