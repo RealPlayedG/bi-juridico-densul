@@ -515,8 +515,11 @@ def api_dados():
         nanx = dict(c.execute(select(anexos.c.processo_id, func.count()).where(anexos.c.excluido.is_(False)).group_by(anexos.c.processo_id)).all())
         cs = [linha(r) for r in c.execute(select(custas).where(custas.c.excluido.is_(False)).order_by(custas.c.vencimento))]
         anx_custa = {}
-        for r in c.execute(select(anexos.c.custa_id, anexos.c.categoria).where(anexos.c.excluido.is_(False), anexos.c.custa_id.is_not(None))):
+        bol = {}
+        for r in c.execute(select(anexos.c.id, anexos.c.custa_id, anexos.c.categoria).where(anexos.c.excluido.is_(False), anexos.c.custa_id.is_not(None)).order_by(anexos.c.id)):
             anx_custa.setdefault(r.custa_id, []).append(r.categoria)
+            if r.categoria == "Boleto":
+                bol[r.custa_id] = r.id  # o mais recente
         ls = [linha(r) for r in c.execute(select(lojas).order_by(lojas.c.nome))]
         auds = [linha(r) for r in c.execute(select(audiencias).where(audiencias.c.excluido.is_(False)).order_by(audiencias.c.data, audiencias.c.hora))]
         sug = _sugestoes(c, ids, agora().date()) if pode("editar_juridico") else []
@@ -529,6 +532,7 @@ def api_dados():
     for x in cs:
         cats = anx_custa.get(x["id"], [])
         x["tem_boleto"] = bool(x["link"]) or "Boleto" in cats
+        x["boleto_url"] = x["link"] or (f"/anexos/{bol[x['id']]}" if x["id"] in bol else "")
         x["tem_comprovante"] = "Comprovante" in cats
     auds = [x for x in auds if x["processo_id"] in ids]
     return jsonify(processos=ps, custas=cs, audiencias=auds, sugestoes=sug, lojas=ls, hoje=agora().date().isoformat(),
@@ -550,8 +554,9 @@ def api_processo(pid):
         p["pagamentos"] = [linha(r) for r in c.execute(select(pagamentos).where(pagamentos.c.processo_id == pid, pagamentos.c.excluido.is_(False)).order_by(pagamentos.c.data.is_(None).desc(), pagamentos.c.data, pagamentos.c.id))]
     for a in p["anexos"]:
         a["url"] = a["link"] or f"/anexos/{a['id']}"
-    if eu()["perfil"] == "leitura":  # apresentação: sem anexos, sem histórico e sem CPF/CNPJ
-        p["anexos"], p["historico"] = [], []
+    if eu()["perfil"] == "leitura":  # apresentação: só os boletos das custas; sem outros anexos, sem histórico e sem CPF/CNPJ
+        p["anexos"] = [a for a in p["anexos"] if a.get("custa_id") and a.get("categoria") == "Boleto"]
+        p["historico"] = []
         _mascarar(p)
     return jsonify(p)
 
@@ -1031,13 +1036,16 @@ def api_excluir_anexo(aid):
 @app.route("/anexos/<int:aid>")
 @logado
 def baixar_anexo(aid):
-    if not pode("anexar"):
+    leitura = eu()["perfil"] == "leitura"
+    if not pode("anexar") and not leitura:
         abort(403)
     with engine.connect() as c:
-        r = c.execute(select(anexos).where(anexos.c.id == aid)).first()
+        r = c.execute(select(anexos).where(anexos.c.id == aid, anexos.c.excluido.is_(False))).first()
         if not r:
             abort(404)
         a = linha(r)
+        if leitura and not (a["custa_id"] and a["categoria"] == "Boleto"):
+            abort(403)  # quem só visualiza baixa apenas boleto de custa
         _processo_visivel(c, a["processo_id"])
     if a["link"]:
         return redirect(a["link"])
