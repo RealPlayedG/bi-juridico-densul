@@ -228,10 +228,13 @@ function evoCard(){
   EV=evoDados();
   if(!EV)return `<section class="card"><div class="card-h"><h2>Evolução das cobranças</h2><span class="sub">por mês</span></div><div class="card-b"><p class="empty">Ainda não há movimentação registrada.</p></div></section>`;
   const t=EV.v.reduce((a,x)=>({novas:a.novas+x.novas,acordos:a.acordos+x.acordos,finais:a.finais+x.finais,recebido:a.recebido+x.recebido}),{novas:0,acordos:0,finais:0,recebido:0});
-  return `<section class="card"><div class="card-h"><h2>Evolução das cobranças</h2><span class="sub">por mês, desde ${EV.lbl[0]}</span></div><div class="card-b">
+  return `<section class="card"><div class="card-h"><h2>Evolução das cobranças</h2><span class="sub">linha do tempo, desde ${EV.lbl[0]}</span></div><div class="card-b">
     <div class="evo-k"><div><small>Novas cobranças</small><b class="num">${t.novas}</b></div><div><small>Acordos fechados</small><b class="num">${t.acordos}</b></div><div><small>Finalizadas</small><b class="num">${t.finais}</b></div><div><small>Valor recebido</small><b class="num pos">${fmt0(t.recebido)}</b></div></div>
-    <div class="evo-c"><canvas id="cg-evo" role="img" aria-label="Evolução mensal: novas cobranças, acordos, finalizadas e valor recebido"></canvas></div>
-    <p class="hint" style="margin-top:6px">Acordos e finalizadas contam quando o status muda no BI. Valor recebido é a soma dos pagamentos lançados com data. As cobranças que vieram da planilha na importação não contam como novas.</p></div></section>`;
+    <div class="evo-tl" role="list" aria-label="Linha do tempo mês a mês">${EV.v.map((x,i)=>{const vazio=!x.novas&&!x.acordos&&!x.finais&&!x.recebido,atual=EV.meses[i]===HOJE.slice(0,7);
+      const it=(ic,n,sing,plur,cls)=>n?`<li class="${cls}">${icon(ic)}<b class="num">${n}</b>${n===1?sing:plur}</li>`:'';
+      return `<div class="evo-m${atual?' atual':''}${vazio?' vazio':''}" role="listitem"><div class="evo-dot"><span></span></div><div class="evo-mes">${EV.lbl[i]}${atual?'<em>atual</em>':''}</div>
+        <div class="evo-box">${vazio?'<p class="muted">Sem movimento</p>':`${x.novas||x.acordos||x.finais?`<ul>${it('plus',x.novas,'nova cobrança','novas cobranças','n')}${it('handshake',x.acordos,'acordo','acordos','a')}${it('check-check',x.finais,'finalizada','finalizadas','f')}</ul>`:''}${x.recebido?`<div class="evo-rec">${icon('hand-coins')}<span><small>recebido</small><b class="num">${fmt0(x.recebido)}</b></span></div>`:''}`}</div></div>`}).join('')}</div>
+    <p class="hint" style="margin-top:10px">Acordos e finalizadas contam quando o status muda no BI. Recebido é a soma dos pagamentos lançados com data. As cobranças que vieram da planilha na importação não contam como novas.</p></div></section>`;
 }
 /* Gráfico com opção Rosca ou Barras (a escolha fica salva no navegador) */
 let G={};
@@ -297,6 +300,7 @@ function mountCharts(){
         plugins:{legend:{display:false},tooltip:{backgroundColor:surf,titleColor:ink,bodyColor:ink,borderColor:line,borderWidth:1,padding:12,cornerRadius:8,boxPadding:4,
           callbacks:{label:c=>` ${g.fv(c.parsed)} (${Math.round(c.parsed/g.tot*100)}%)`}}}}}));
   });
+  const tl=$('.evo-tl');if(tl)tl.scrollLeft=tl.scrollWidth; // começa no mês atual
   const ev=$('#cg-evo');
   if(ev&&EV){const tip={backgroundColor:surf,titleColor:ink,bodyColor:ink,borderColor:line,borderWidth:1,padding:12,cornerRadius:8,boxPadding:4};
     const bar=(label,k,cor)=>({type:'bar',label,data:EV.v.map(x=>x[k]),backgroundColor:cor,borderRadius:4,maxBarThickness:22,yAxisID:'y',order:2});
