@@ -78,6 +78,14 @@ o histórico só dele. Para isso funcionar, **cada pessoa precisa ter o próprio
 - As regionais vieram da lista "Regionais" enviada pela Densul (db.py, `REGIONAIS`). As filiais, com código e UF, estão em `FILIAIS` (lista de 06/11/2026): toda subida garante que todas existem no cadastro. Cada loja tem a sua regional em **Administração > Lojas**,
   onde o administrador pode trocar (fica no histórico). Loja sem regional aparece em "Sem regional".
 
+## Evolução e linha do tempo (cobranças)
+
+- **Início > Evolução das cobranças**: por mês (até 12 meses), novas cobranças, acordos fechados (status virou "Feito Acordo"),
+  finalizadas (status virou "Finalizado") e valor recebido (pagamentos com data). Respeita o filtro de lojas e regionais.
+  As cobranças que vieram na importação da planilha não contam como novas. Aparece também no modo visualização.
+- **Dentro da cobrança > Linha do tempo**: entrada, autorização, trocas de status, andamentos, audiências, custas e pagamentos,
+  do mais recente para o mais antigo. No modo visualização ela já vem aberta.
+
 ## Pagamentos do cliente (entrada e parcelas)
 
 - Dentro do processo, **Pagamentos do cliente > Lançar pagamento**: data, valor, descrição (Entrada, Parcela 1...) e comprovante.

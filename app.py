@@ -495,6 +495,24 @@ def nao_achou(e):
     return e
 
 
+def _mudancas_status(conn, ids):
+    """Trocas de status registradas no histórico: [(processo_id, em, de, para, quem)]."""
+    out = []
+    if not ids:
+        return out
+    acoes = ("Processo alterado", "Atualizado pela planilha")
+    for r in conn.execute(select(historico.c.processo_id, historico.c.em, historico.c.detalhes, historico.c.nome)
+                          .where(historico.c.processo_id.in_(list(ids)), historico.c.acao.in_(acoes)).order_by(historico.c.id)):
+        try:
+            det = json.loads(r.detalhes or "[]")
+        except ValueError:
+            continue
+        for m in det if isinstance(det, list) else []:
+            if isinstance(m, dict) and m.get("campo") == "Status":
+                out.append((r.processo_id, r.em, m.get("de") or "", m.get("para") or "", r.nome or ""))
+    return out
+
+
 @app.route("/api/dados")
 @logado
 def api_dados():
@@ -523,6 +541,12 @@ def api_dados():
         ls = [linha(r) for r in c.execute(select(lojas).order_by(lojas.c.nome))]
         auds = [linha(r) for r in c.execute(select(audiencias).where(audiencias.c.excluido.is_(False)).order_by(audiencias.c.data, audiencias.c.hora))]
         sug = _sugestoes(c, ids, agora().date()) if pode("editar_juridico") else []
+        # evolução das cobranças (Início): trocas de status e pagamentos com data
+        cob_ids = {p["id"] for p in ps if p["tipo"] == "cobranca" and not p.get("autorizacao")}
+        evo_status = [[pid, em.strftime("%Y-%m-%d"), de, para] for pid, em, de, para, _ in _mudancas_status(c, cob_ids) if em]
+        evo_pag = [[r.processo_id, r.data.isoformat(), float(r.valor)] for r in c.execute(
+            select(pagamentos.c.processo_id, pagamentos.c.data, pagamentos.c.valor).where(
+                pagamentos.c.excluido.is_(False), pagamentos.c.data.is_not(None), pagamentos.c.processo_id.in_(list(cob_ids) or [0])))]
     for p in ps:
         t = ult.get(p["id"])
         p["andamento"] = t[0] if t else ""
@@ -535,7 +559,7 @@ def api_dados():
         x["boleto_url"] = x["link"] or (f"/anexos/{bol[x['id']]}" if x["id"] in bol else "")
         x["tem_comprovante"] = "Comprovante" in cats
     auds = [x for x in auds if x["processo_id"] in ids]
-    return jsonify(processos=ps, custas=cs, audiencias=auds, sugestoes=sug, lojas=ls, hoje=agora().date().isoformat(),
+    return jsonify(processos=ps, custas=cs, audiencias=auds, sugestoes=sug, lojas=ls, evolucao={"status": evo_status, "pagamentos": evo_pag}, hoje=agora().date().isoformat(),
                    listas={"status": STATUS, "identificacoes": IDENTIFICACOES, "tipos_custa": TIPOS_CUSTA,
                            "categorias": CATEGORIAS_ANEXO, "perfis": PERFIS, "tipos_audiencia": TIPOS_AUDIENCIA,
                            "regionais": list(REGIONAIS.keys())})
@@ -552,13 +576,51 @@ def api_processo(pid):
         p["historico"] = [linha(r) for r in c.execute(select(historico).where(historico.c.processo_id == pid).order_by(historico.c.id.desc()).limit(80))]
         p["audiencias"] = [linha(r) for r in c.execute(select(audiencias).where(audiencias.c.processo_id == pid, audiencias.c.excluido.is_(False)).order_by(audiencias.c.data, audiencias.c.hora))]
         p["pagamentos"] = [linha(r) for r in c.execute(select(pagamentos).where(pagamentos.c.processo_id == pid, pagamentos.c.excluido.is_(False)).order_by(pagamentos.c.data.is_(None).desc(), pagamentos.c.data, pagamentos.c.id))]
+        trocas = _mudancas_status(c, {pid})
     for a in p["anexos"]:
         a["url"] = a["link"] or f"/anexos/{a['id']}"
+    p["linha_tempo"] = _linha_tempo(p, trocas)
     if eu()["perfil"] == "leitura":  # apresentação: só os boletos das custas; sem outros anexos, sem histórico e sem CPF/CNPJ
         p["anexos"] = [a for a in p["anexos"] if a.get("custa_id") and a.get("categoria") == "Boleto"]
         p["historico"] = []
         _mascarar(p)
     return jsonify(p)
+
+
+def _linha_tempo(p, trocas):
+    """Tudo o que aconteceu no processo, em ordem de data: [{em, tipo, titulo, texto, por}]."""
+    def d(x):
+        return str(x)[:16].replace("T", " ") if x else ""
+    ev = []
+    ev.append({"em": d(p.get("criado_em")), "tipo": "entrada", "titulo": "Entrou no jurídico",
+               "texto": f'Status inicial: {p.get("status") or "sem status"}' if not trocas else f'Status inicial: {trocas[0][2] or "sem status"}',
+               "por": p.get("criado_por") or ""})
+    if p.get("autorizado_em"):
+        ev.append({"em": d(p["autorizado_em"]), "tipo": "autorizacao", "titulo": "Autorizada", "texto": "", "por": p.get("autorizado_por") or ""})
+    for pid, em, de, para, quem in trocas:
+        ev.append({"em": d(em), "tipo": "status", "titulo": f"Status: {para or 'sem status'}", "texto": f"antes: {de or 'sem status'}", "por": quem})
+    for a in p["andamentos"]:
+        if str(a.get("texto", "")).lower().startswith("conferir:"):
+            continue
+        ev.append({"em": d(a["em"]), "tipo": "audiencia" if a.get("audiencia_id") else "andamento",
+                   "titulo": "Audiência finalizada" if a.get("audiencia_id") else "Andamento", "texto": a["texto"], "por": a.get("por") or ""})
+    for au in p["audiencias"]:
+        ev.append({"em": f'{au["data"]} {au.get("hora") or ""}'.strip(), "tipo": "audiencia",
+                   "titulo": f'Audiência de {str(au["tipo"]).lower()}' + ("" if au.get("finalizada") else " (marcada)"),
+                   "texto": "", "por": au.get("criado_por") or "", "futuro": str(au["data"]) > agora().date().isoformat()})
+    for cu in p["custas"]:
+        ev.append({"em": d(cu.get("criado_em")), "tipo": "custa", "titulo": f'Custa {str(cu["tipo"]).lower()} lançada',
+                   "texto": f'vence {date.fromisoformat(str(cu["vencimento"])[:10]).strftime("%d/%m/%Y")}' if cu.get("vencimento") else "",
+                   "por": cu.get("criado_por") or ""})
+        if cu.get("pago") and cu.get("pago_em"):
+            ev.append({"em": d(cu["pago_em"]), "tipo": "custa", "titulo": f'Custa {str(cu["tipo"]).lower()} paga', "texto": "", "por": cu.get("pago_por") or ""})
+    for g in p["pagamentos"]:
+        if g.get("data"):
+            ev.append({"em": str(g["data"]), "tipo": "pagamento", "titulo": f'Pagamento recebido: R$ {float(g["valor"]):,.2f}'.replace(",", "X").replace(".", ",").replace("X", "."),
+                       "texto": g.get("descricao") or "", "por": g.get("criado_por") or ""})
+    ev = [e for e in ev if e["em"]]
+    ev.sort(key=lambda e: e["em"])
+    return ev
 
 
 # ---------- processos ----------

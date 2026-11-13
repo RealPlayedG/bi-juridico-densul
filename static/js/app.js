@@ -21,7 +21,7 @@ const isAdmin=ME.perfil==='admin', canJ=ME.perfil==='admin'||ME.perfil==='juridi
 const isLeitura=ME.perfil==='leitura', canAutorizar=!!ME.autoriza;
 
 /* ================= Dados ================= */
-let P=[],C=[],AUD=[],SUG=[],LOJAS=[],LISTAS={status:{},tipos_custa:[],categorias:[],identificacoes:[],perfis:{}},HOJE='';
+let EVO={status:[],pagamentos:[]},P=[],C=[],AUD=[],SUG=[],LOJAS=[],LISTAS={status:{},tipos_custa:[],categorias:[],identificacoes:[],perfis:{}},HOJE='';
 let LOADED=false,SYNC={at:null,err:null,busy:false};
 const _t=new Date();
 const S={g:{st:'rosca',lj:'barras',dv:'barras'},fl:{lojas:[],regs:[]},flOpen:false,page:'painel',loja:'',q:'',st:'todos',cv:'lista',cf:'atencao',cy:_t.getFullYear(),cm:_t.getMonth(),sel:'',bell:false,ord:'padrao',adm:'usuarios'};
@@ -40,7 +40,7 @@ async function api(path,opts={}){
 }
 async function refresh(silent){
   if(SYNC.busy)return;SYNC.busy=true;
-  try{const d=await api('/api/dados');P=d.processos;C=d.custas;AUD=d.audiencias||[];SUG=d.sugestoes||[];LOJAS=d.lojas;LISTAS=d.listas;HOJE=d.hoje;if(!S.sel)S.sel=HOJE;LOADED=true;SYNC.at=new Date();SYNC.err=null}
+  try{const d=await api('/api/dados');P=d.processos;C=d.custas;AUD=d.audiencias||[];SUG=d.sugestoes||[];EVO=d.evolucao||{status:[],pagamentos:[]};LOJAS=d.lojas;LISTAS=d.listas;HOJE=d.hoje;if(!S.sel)S.sel=HOJE;LOADED=true;SYNC.at=new Date();SYNC.err=null}
   catch(e){SYNC.err=e.message;if(!silent)toast(e.message)}
   SYNC.busy=false;
   if(document.activeElement&&['q'].includes(document.activeElement.id)){renderShell();drawIcons()}else render();
@@ -201,11 +201,37 @@ function painel(){
     ${cardGraf('st','Cobrança por status','valor da dívida',rSt,{centro:'Todos os status',maxPie:9,maxBar:9,aria:'Valor em cobrança por status'})}
     ${cardGraf('lj','Cobrança por loja',`${rLj.length} lojas, maiores valores`,rLj,{centro:'Todas as lojas',outros:n=>`Outras ${n} lojas`,aria:'Valor em cobrança por loja'})}
   </div>
+  ${evoCard()}
   <div class="${isLeitura?'':'g2 g2-eq'}">
     <section class="card"><div class="card-h"><h2>Próximos dias</h2><span class="sub">custas e audiências</span><button class="link" data-page="custas">Agenda</button></div><div class="card-b">${proxCustas()}</div></section>
     ${isLeitura?'':div.length?cardGraf('dv','Processos diversos',`${div.length} processos`,rDv,{centro:'Processos',cont:true,maxBar:7,outros:n=>`Outros ${n} tipos`,aria:'Processos diversos por tipo de ação'}):`<section class="card"><div class="card-h"><h2>Processos diversos</h2></div><div class="card-b"><p class="empty">Nenhum processo diverso.</p></div></section>`}
   </div>`;
   return h;
+}
+/* Evolução das cobranças mês a mês (respeita o filtro de lojas/regionais) */
+let EV=null;
+function evoDados(){
+  const ids=new Set(ativos().filter(p=>p.tipo==='cobranca'&&!p.autorizacao).map(p=>p.id));
+  const mes=d=>String(d).slice(0,7),m={};
+  const add=(k,campo,v)=>{(m[k]=m[k]||{novas:0,acordos:0,finais:0,recebido:0})[campo]+=v};
+  ativos().forEach(p=>{if(ids.has(p.id)&&p.criado_em&&!/^importa/i.test(p.criado_por||''))add(mes(p.criado_em),'novas',1)});
+  EVO.status.forEach(([pid,em,de,para])=>{if(!ids.has(pid))return;if(para==='Feito Acordo')add(mes(em),'acordos',1);if(para==='Finalizado')add(mes(em),'finais',1)});
+  EVO.pagamentos.forEach(([pid,dt,v])=>{if(ids.has(pid))add(mes(dt),'recebido',Number(v)||0)});
+  const ks=Object.keys(m).sort();if(!ks.length)return null;
+  const fim=HOJE.slice(0,7);let ini=ks[0];const [fy,fm]=fim.split('-').map(Number);
+  const lim=`${fm===12?fy:fy-1}-${String(fm===12?1:fm+1).padStart(2,'0')}`;if(ini<lim)ini=lim; // até 12 meses
+  const meses=[];let [y,mm]=ini.split('-').map(Number);
+  while(`${y}-${String(mm).padStart(2,'0')}`<=fim){meses.push(`${y}-${String(mm).padStart(2,'0')}`);mm++;if(mm>12){mm=1;y++}}
+  return {meses,lbl:meses.map(k=>MES3[+k.slice(5)-1]+'/'+k.slice(2,4)),v:meses.map(k=>m[k]||{novas:0,acordos:0,finais:0,recebido:0})};
+}
+function evoCard(){
+  EV=evoDados();
+  if(!EV)return `<section class="card"><div class="card-h"><h2>Evolução das cobranças</h2><span class="sub">por mês</span></div><div class="card-b"><p class="empty">Ainda não há movimentação registrada.</p></div></section>`;
+  const t=EV.v.reduce((a,x)=>({novas:a.novas+x.novas,acordos:a.acordos+x.acordos,finais:a.finais+x.finais,recebido:a.recebido+x.recebido}),{novas:0,acordos:0,finais:0,recebido:0});
+  return `<section class="card"><div class="card-h"><h2>Evolução das cobranças</h2><span class="sub">por mês, desde ${EV.lbl[0]}</span></div><div class="card-b">
+    <div class="evo-k"><div><small>Novas cobranças</small><b class="num">${t.novas}</b></div><div><small>Acordos fechados</small><b class="num">${t.acordos}</b></div><div><small>Finalizadas</small><b class="num">${t.finais}</b></div><div><small>Valor recebido</small><b class="num pos">${fmt0(t.recebido)}</b></div></div>
+    <div class="evo-c"><canvas id="cg-evo" role="img" aria-label="Evolução mensal: novas cobranças, acordos, finalizadas e valor recebido"></canvas></div>
+    <p class="hint" style="margin-top:6px">Acordos e finalizadas contam quando o status muda no BI. Valor recebido é a soma dos pagamentos lançados com data. As cobranças que vieram da planilha na importação não contam como novas.</p></div></section>`;
 }
 /* Gráfico com opção Rosca ou Barras (a escolha fica salva no navegador) */
 let G={};
@@ -271,6 +297,16 @@ function mountCharts(){
         plugins:{legend:{display:false},tooltip:{backgroundColor:surf,titleColor:ink,bodyColor:ink,borderColor:line,borderWidth:1,padding:12,cornerRadius:8,boxPadding:4,
           callbacks:{label:c=>` ${g.fv(c.parsed)} (${Math.round(c.parsed/g.tot*100)}%)`}}}}}));
   });
+  const ev=$('#cg-evo');
+  if(ev&&EV){const tip={backgroundColor:surf,titleColor:ink,bodyColor:ink,borderColor:line,borderWidth:1,padding:12,cornerRadius:8,boxPadding:4};
+    const bar=(label,k,cor)=>({type:'bar',label,data:EV.v.map(x=>x[k]),backgroundColor:cor,borderRadius:4,maxBarThickness:22,yAxisID:'y',order:2});
+    CH.push(new Chart(ev,{data:{labels:EV.lbl,datasets:[bar('Novas cobranças','novas',cssv('--s1')),bar('Acordos fechados','acordos',cssv('--s2')),bar('Finalizadas','finais',cssv('--s4')),
+      {type:'line',label:'Valor recebido',data:EV.v.map(x=>x.recebido),borderColor:cssv('--pos'),backgroundColor:cssv('--pos'),borderWidth:2.5,pointRadius:3,tension:0,yAxisID:'y2',order:1}]},
+      options:{responsive:true,maintainAspectRatio:false,animation:anim,interaction:{mode:'index',intersect:false},
+        scales:{x:{grid:{display:false}},y:{beginAtZero:true,ticks:{precision:0},grid:{color:line},title:{display:true,text:'processos'}},
+          y2:{beginAtZero:true,position:'right',grid:{display:false},ticks:{callback:v=>fmt0(v)},title:{display:true,text:'recebido'}}},
+        plugins:{legend:{position:'top',align:'start',labels:{boxWidth:10,boxHeight:10,usePointStyle:true}},tooltip:{...tip,callbacks:{label:c=>` ${c.dataset.label}: ${c.dataset.yAxisID==='y2'?fmt(c.parsed.y):c.parsed.y}`}}}}}));
+  }
 }
 
 /* ================= Listas (Cobrança e Diversos) ================= */
@@ -437,6 +473,7 @@ function renderProc(p){
       </div>
       ${canJ||canF?`<div class="acts" style="display:flex;justify-content:flex-end;gap:8px">${canJ?`<button type="button" class="btn danger" data-excluir="${p.id}">${icon('trash-2')}Excluir</button>`:''}<button class="btn primary" type="submit">${icon('check')}Salvar alterações</button></div>`:''}
     </form>
+    ${tipo==='cobranca'&&(p.linha_tempo||[]).length?`<div class="sec"><details class="more-h"${isLeitura?' open':''}><summary>${icon('route')}Linha do tempo (${p.linha_tempo.length})</summary>${ltHTML(p.linha_tempo)}</details></div>`:''}
     ${tipo==='cobranca'||pgs.length?`<div class="sec">
       <div class="sec-h"><h3>${icon('hand-coins')}Pagamentos do cliente</h3><span class="muted" style="font-size:12.5px">entrada e parcelas</span>${canF?`<button class="btn sm" style="margin-left:auto" data-novo-pag="${p.id}">${icon('plus')}Lançar pagamento</button>`:''}</div>
       ${pagH}
@@ -500,6 +537,11 @@ function pagarForm(cid){
   document.querySelectorAll('[id^="pg-"]').forEach(x=>x.innerHTML='');const box=$('#pg-'+cid);if(!box)return;
   box.innerHTML=`<form class="aud-fin" id="f-pagar" data-cid="${cid}"><label for="pg-arq">Comprovante de pagamento <span class="muted">opcional, pode anexar depois</span></label><input type="file" id="pg-arq" accept=".pdf,image/*"><div class="acts"><button type="button" class="btn sm" data-pg-cancel="1">Cancelar</button><button class="btn sm primary">${icon('check')}Confirmar pagamento</button></div></form>`;
   drawIcons();box.scrollIntoView({block:'nearest',behavior:'smooth'});
+}
+const LT_IC={entrada:'flag',autorizacao:'badge-check',status:'arrow-right-left',andamento:'message-square',audiencia:'gavel',custa:'receipt',pagamento:'hand-coins'};
+function ltHTML(ev){
+  const dt=e=>{const d=String(e.em);return brDate(d.slice(0,10))+(d.length>10&&d.slice(11,16)?' '+d.slice(11,16):'')};
+  return `<ol class="lt">${ev.slice().reverse().map(e=>`<li class="lt-${e.tipo}${e.futuro?' futuro':''}"><span class="lt-ic">${icon(LT_IC[e.tipo]||'circle')}</span><div><small>${dt(e)}${e.por?' · '+esc(e.por):''}${e.futuro?' · agendada':''}</small><b>${esc(e.titulo)}</b>${e.texto?`<p>${esc(e.texto)}</p>`:''}</div></li>`).join('')}</ol>`;
 }
 function mescHTML(r){
   const pl=r.plano,v=x=>x===null||x===undefined||x===''?'vazio':esc(String(x));
