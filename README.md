@@ -86,6 +86,12 @@ o histórico só dele. Para isso funcionar, **cada pessoa precisa ter o próprio
 - **Dentro da cobrança > Linha do tempo**: entrada, autorização, trocas de status, andamentos, audiências, custas e pagamentos,
   do mais recente para o mais antigo. No modo visualização ela já vem aberta.
 
+## Cadastrado na aba errada
+
+- Dentro do processo: **Mover para Cobrança** (ou **Mover para Diversos**). Nada é apagado; o status volta para "sem status"
+  (as listas de status das abas são diferentes) e um andamento registra a mudança com o status, tipo de ação e teor antigos.
+- Indo para Cobrança, quem não autoriza deixa o processo aguardando a autorização, como num cadastro novo.
+
 ## Dívida em mais de uma loja
 
 - Na cobrança, abaixo de Loja: **Dívida em mais de uma loja**. Cada loja recebe o seu valor; a primeira é a loja principal

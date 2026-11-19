@@ -824,6 +824,42 @@ def api_editar_processo(pid):
     return jsonify(ok=True, mudancas=len(mud))
 
 
+@app.post("/api/processos/<int:pid>/mover")
+@logado
+@so("editar_juridico")
+def api_mover_processo(pid):
+    """Cadastrado na aba errada: passa de Processos Diversos para Cobrança (ou o contrário). Nenhum dado é apagado;
+    o status volta para "sem status" porque as listas de status das abas são diferentes."""
+    para = corpo().get("para")
+    if para not in STATUS:
+        return jsonify(erro="Aba inválida."), 400
+    with engine.begin() as c:
+        p = _processo_visivel(c, pid)
+        if p["tipo"] == para:
+            return jsonify(erro="O processo já está nessa aba."), 409
+        vals = {"tipo": para, "status": "", "atualizado_em": agora()}
+        pendente = False
+        if para == "cobranca":
+            if not pode("autorizar"):  # cobrança nova para o jurídico: mesma regra de autorização do cadastro
+                vals.update(autorizacao="pendente", autorizado_por="", autorizado_em=None)
+                pendente = True
+            else:
+                vals.update(autorizacao="", autorizado_por=eu()["nome"], autorizado_em=agora())
+        else:
+            vals.update(autorizacao="", rateio="")
+        c.execute(update(processos).where(processos.c.id == pid).values(**vals))
+        nome = {"cobranca": "Cobrança", "diversos": "Processos Diversos"}
+        texto = f'Movido de {nome[p["tipo"]]} para {nome[para]} (estava cadastrado na aba errada). Status anterior: {p["status"] or "sem status"}.'
+        if p.get("tipo_acao"):
+            texto += f' Tipo de ação: {p["tipo_acao"]}.'
+        if p.get("teor"):
+            texto += f' Teor: {p["teor"]}'
+        c.execute(insert(andamentos).values(processo_id=pid, texto=texto[:4000], por=eu()["nome"], em=agora()))
+        registrar(c, eu(), "Processo movido de aba" + (" (aguardando autorização)" if pendente else ""), pid,
+                  [{"campo": "Aba", "de": nome[p["tipo"]], "para": nome[para]}, {"campo": "Status", "de": p["status"], "para": ""}])
+    return jsonify(ok=True, pendente=pendente)
+
+
 @app.delete("/api/processos/<int:pid>")
 @logado
 @so("editar_juridico")

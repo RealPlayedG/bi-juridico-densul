@@ -499,7 +499,7 @@ function renderProc(p){
         <div class="fld"><label>Valor pago (R$) <span class="muted">soma dos pagamentos</span></label><input value="${p.valor_pago?fmt(p.valor_pago):''}" disabled placeholder="Nenhum pagamento"></div>
         <label class="check fld full"><input type="checkbox" id="p-conferido" ${p.conferido?'checked':''} ${canF?'':'disabled'}>Recebimento conferido pelo financeiro${p.conferido?` <span class="muted">(${esc(p.conferido_por)}, ${brDT(p.conferido_em)})</span>`:''}</label>
       </div>
-      ${canJ||canF?`<div class="acts" style="display:flex;justify-content:flex-end;gap:8px">${canJ?`<button type="button" class="btn danger" data-excluir="${p.id}">${icon('trash-2')}Excluir</button>`:''}<button class="btn primary" type="submit">${icon('check')}Salvar alterações</button></div>`:''}
+      ${canJ||canF?`<div class="acts" style="display:flex;justify-content:flex-end;gap:8px">${canJ?`<button type="button" class="btn danger" data-excluir="${p.id}">${icon('trash-2')}Excluir</button><button type="button" class="btn" data-mover="${p.tipo==='diversos'?'cobranca':'diversos'}" data-pid="${p.id}" title="Cadastrado na aba errada">${icon('arrow-right-left')}Mover para ${p.tipo==='diversos'?'Cobrança':'Diversos'}</button>`:''}<button class="btn primary" type="submit">${icon('check')}Salvar alterações</button></div>`:''}
     </form>
     ${tipo==='cobranca'&&(p.linha_tempo||[]).length?`<div class="sec"><details class="more-h"${isLeitura?' open':''}><summary>${icon('route')}Linha do tempo (${p.linha_tempo.length})</summary>${ltHTML(p.linha_tempo)}</details></div>`:''}
     ${tipo==='cobranca'||pgs.length?`<div class="sec">
@@ -741,6 +741,10 @@ document.addEventListener('click',async e=>{
   if(d.anexarCusta){anexoForm(ABERTO,+d.anexarCusta,d.cat);return}
   if(d.fecharForm){$('#'+d.fecharForm).innerHTML='';return}
   if(d.delAnexo){if(!confirma(t,icon('check')))return;await salvar(()=>api('/api/anexos/'+d.delAnexo,{method:'DELETE'}),'Anexo removido.');openProc(ABERTO);return}
+  if(d.mover){const para=d.mover,nome=para==='cobranca'?'Cobrança':'Processos Diversos';
+    if(!confirma(t,`Mover para ${nome}?`))return;
+    const r=await salvar(()=>api(`/api/processos/${d.pid}/mover`,{method:'POST',body:{para}}));
+    toast(r&&r.pendente?`Movido para ${nome}. Aguardando autorização.`:`Movido para ${nome}. Escolha o status novo.`);openProc(+d.pid);return}
   if(d.excluir){if(!confirma(t,'Excluir o processo?'))return;await salvar(()=>api('/api/processos/'+d.excluir,{method:'DELETE'}),'Processo excluído.');closeLayer();return}
   if(d.novoUser){openUser();return}
   if(d.editUser){openUser(ADM.usuarios.find(u=>u.id===+d.editUser));return}
