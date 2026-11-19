@@ -86,6 +86,14 @@ o histórico só dele. Para isso funcionar, **cada pessoa precisa ter o próprio
 - **Dentro da cobrança > Linha do tempo**: entrada, autorização, trocas de status, andamentos, audiências, custas e pagamentos,
   do mais recente para o mais antigo. No modo visualização ela já vem aberta.
 
+## Dívida em mais de uma loja
+
+- Na cobrança, abaixo de Loja: **Dívida em mais de uma loja**. Cada loja recebe o seu valor; a primeira é a loja principal
+  e o Valor da dívida passa a ser a soma (campo `processos.rateio`, JSON).
+- A cobrança aparece no filtro de qualquer uma das lojas (e para usuários dessas lojas). Com filtro, os totais e o gráfico
+  por loja contam só a parte das lojas filtradas. Acordo e valor pago continuam sendo do processo inteiro.
+- Na planilha, a coluna Loja mostra "Loja A + Loja B" e o valor total; loja e valor desses processos só mudam pelo BI.
+
 ## Pagamentos do cliente (entrada e parcelas)
 
 - Dentro do processo, **Pagamentos do cliente > Lançar pagamento**: data, valor, descrição (Entrada, Parcela 1...) e comprovante.

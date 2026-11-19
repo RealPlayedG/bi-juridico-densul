@@ -32,7 +32,7 @@ import espelho  # noqa: E402
 from db import (REGIONAIS, regional_da_loja, CATEGORIAS_ANEXO, IDENTIFICACOES, PERFIS, STATUS, TIPOS_AUDIENCIA, TIPOS_CUSTA, agora, andamentos,  # noqa: E402
                 anexos, audiencias, config_gravar, config_ler, criar_tabelas, custas, engine, garantir_admin, historico, linha,
                 lojas, pagamentos, processos, registrar, usuarios)
-from sqlalchemy import and_, func, insert, select, update  # noqa: E402
+from sqlalchemy import and_, func, insert, or_, select, update  # noqa: E402
 
 app = Flask(__name__)
 app.secret_key = os.environ["SECRET_KEY"]
@@ -245,8 +245,11 @@ def pode(acao, u=None):
 
 
 def _filtro_lojas(u):
+    """Processo é da pessoa se a loja principal, ou uma das lojas da divisão da dívida, é dela."""
     ls = lojas_de(u)
-    return processos.c.loja.in_(ls) if ls else None
+    if not ls:
+        return None
+    return or_(processos.c.loja.in_(ls), *[processos.c.rateio.like(f'%"loja": {json.dumps(l, ensure_ascii=False)}%') for l in ls])
 
 
 def _ip():
@@ -626,12 +629,50 @@ def _linha_tempo(p, trocas):
 # ---------- processos ----------
 
 CAMPOS_JURIDICO = {"tipo", "loja", "uf", "carteira", "ano", "codigo_cliente", "parte", "documento", "identificacao",
-                   "tipo_acao", "numero", "status", "valor", "valor_acordo", "teor"}
+                   "tipo_acao", "numero", "status", "valor", "valor_acordo", "teor", "rateio"}
 CAMPOS_FINANCEIRO = {"conferido"}  # valor pago agora é a soma dos pagamentos lançados
 NOMES = {"loja": "Loja", "uf": "UF", "carteira": "Carteira", "ano": "Ano", "codigo_cliente": "Código do cliente",
          "parte": "Cliente / parte", "documento": "CNPJ / CPF", "identificacao": "Identificação", "tipo_acao": "Tipo de ação",
          "numero": "Nº do processo", "status": "Status", "valor": "Valor", "valor_acordo": "Valor do acordo",
-         "valor_pago": "Valor pago", "conferido": "Recebimento conferido", "teor": "Teor", "tipo": "Aba"}
+         "valor_pago": "Valor pago", "conferido": "Recebimento conferido", "teor": "Teor", "tipo": "Aba",
+         "rateio": "Divisão entre lojas"}
+
+
+def rateio_lista(txt):
+    try:
+        r = json.loads(txt) if txt else []
+        return r if isinstance(r, list) else []
+    except ValueError:
+        return []
+
+
+def rateio_texto(txt):
+    """Para o histórico: "Palmas R$ 34.477,01 + Araguaína R$ 11.195,22"."""
+    r = rateio_lista(txt)
+    if not r:
+        return "uma loja só"
+    br = lambda v: f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")  # noqa: E731
+    return " + ".join(f'{x["loja"]} {br(float(x["valor"]))}' for x in r)
+
+
+def _aplicar_rateio(vals, conn):
+    """Valida a divisão; com 2 ou mais lojas, a loja principal é a primeira e a dívida é a soma das partes."""
+    if "rateio" not in vals:
+        return
+    r = rateio_lista(vals["rateio"])
+    if len(r) < 2:
+        vals["rateio"] = ""
+        return
+    existentes = {x.nome for x in conn.execute(select(lojas.c.nome))}
+    vistos = set()
+    for x in r:
+        if x["loja"] not in existentes:
+            raise ValueError(f'Loja "{x["loja"]}" não está no cadastro.')
+        if x["loja"] in vistos:
+            raise ValueError(f'A loja {x["loja"]} aparece duas vezes na divisão.')
+        vistos.add(x["loja"])
+    vals["loja"] = r[0]["loja"]
+    vals["valor"] = round(sum(float(x["valor"]) for x in r), 2)
 
 
 def _limpar(campo, v):
@@ -655,6 +696,21 @@ def _limpar(campo, v):
         if v not in STATUS:
             raise ValueError("Aba inválida.")
         return v
+    if campo == "rateio":
+        lista = v if isinstance(v, list) else rateio_lista(v)
+        out = []
+        for x in lista or []:
+            loja = str((x or {}).get("loja", "")).strip()[:120]
+            if not loja:
+                continue
+            try:
+                valor = round(float(str(x.get("valor", "")).replace(",", ".")), 2)
+            except ValueError:
+                raise ValueError(f"Valor da loja {loja}: digite só números.")
+            if valor <= 0:
+                raise ValueError(f"Informe o valor da dívida na loja {loja}.")
+            out.append({"loja": loja, "valor": valor})
+        return json.dumps(out, ensure_ascii=False) if len(out) >= 2 else ""
     s = str(v or "").strip()
     return s.upper()[:2] if campo == "uf" else s[:255]
 
@@ -681,8 +737,13 @@ def api_novo_processo():
         return jsonify(erro=str(e)), 400
     if not vals.get("parte") and not vals.get("numero"):
         return jsonify(erro="Preencha o cliente/parte ou o nº do processo."), 400
+    try:
+        with engine.connect() as c0:
+            _aplicar_rateio(vals, c0)
+    except ValueError as e:
+        return jsonify(erro=str(e)), 400
     ls = lojas_de(eu())
-    if ls and vals.get("loja") not in ls:
+    if ls and vals.get("loja") not in ls and not any(x["loja"] in ls for x in rateio_lista(vals.get("rateio"))):
         return jsonify(erro="Você só pode cadastrar processos das suas lojas."), 403
     # Cobrança nova lançada por quem não autoriza fica aguardando a autorização (ex.: da Juliana)
     precisa = d["tipo"] == "cobranca" and not pode("autorizar")
@@ -739,6 +800,7 @@ def api_editar_processo(pid):
         atual = _processo_visivel(c, pid)
         try:
             novos = {k: _limpar(k, d[k]) for k in d if k in (CAMPOS_JURIDICO | CAMPOS_FINANCEIRO)}
+            _aplicar_rateio(novos, c)
         except ValueError as e:
             return jsonify(erro=str(e)), 400
         mud = {k: v for k, v in novos.items() if not _igual(atual.get(k), v)}
@@ -747,7 +809,8 @@ def api_editar_processo(pid):
         if tentou:
             return jsonify(erro="Seu perfil não pode alterar: " + ", ".join(tentou) + "."), 403
         ls = lojas_de(eu())
-        if ls and "loja" in mud and mud["loja"] not in ls:
+        if ls and (("loja" in mud and mud["loja"] not in ls) or
+                   any(x["loja"] not in ls for x in rateio_lista(mud.get("rateio"))) and "rateio" in mud):
             return jsonify(erro="Você só pode usar as suas lojas."), 403
         if not mud:
             return jsonify(ok=True, mudancas=0)
@@ -756,7 +819,8 @@ def api_editar_processo(pid):
             mud["conferido_em"] = agora() if mud["conferido"] else None
         c.execute(update(processos).where(processos.c.id == pid).values(**mud, atualizado_em=agora()))
         registrar(c, eu(), "Processo alterado", pid,
-                  [{"campo": NOMES.get(k, k), "de": atual.get(k), "para": v} for k, v in mud.items() if k in NOMES])
+                  [{"campo": NOMES.get(k, k), "de": rateio_texto(atual.get(k)) if k == "rateio" else atual.get(k),
+                    "para": rateio_texto(v) if k == "rateio" else v} for k, v in mud.items() if k in NOMES])
     return jsonify(ok=True, mudancas=len(mud))
 
 

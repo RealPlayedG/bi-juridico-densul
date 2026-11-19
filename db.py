@@ -74,6 +74,7 @@ processos = Table(
     Column("id", Integer, primary_key=True),
     Column("tipo", String(12), nullable=False),             # cobranca | diversos
     Column("loja", String(80), default=""),
+    Column("rateio", Text, default=""),                     # dívida em mais de uma loja: JSON [{"loja": "...", "valor": 0.0}]
     Column("uf", String(2), default=""),
     Column("carteira", String(20), default=""),
     Column("ano", Integer),
@@ -266,6 +267,7 @@ COLUNAS_NOVAS = [  # (tabela, coluna, tipo SQL): criadas sozinhas na subida, em 
     ("andamentos", "audiencia_id", "INTEGER"),
     ("anexos", "pagamento_id", "INTEGER"),
     ("lojas", "codigo", "VARCHAR(20) DEFAULT ''"),
+    ("processos", "rateio", "TEXT DEFAULT ''"),
     ("audiencias", "finalizada", "BOOLEAN DEFAULT FALSE"),
     ("audiencias", "finalizada_em", "TIMESTAMP"),
     ("audiencias", "finalizada_por", "VARCHAR(120) DEFAULT ''"),

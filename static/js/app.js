@@ -57,7 +57,13 @@ const SEM_REG='Sem regional';
 const lojaReg=n=>{const l=LOJAS.find(x=>x.nome===n);return (l&&l.regional)||SEM_REG};
 const lojasDisp=()=>ME.lojas&&ME.lojas.length?LOJAS.filter(l=>ME.lojas.includes(l.nome)):LOJAS;
 const filtroAtivo=()=>S.fl.lojas.length+S.fl.regs.length>0;
-const vis=p=>!filtroAtivo()||S.fl.lojas.includes(p.loja)||S.fl.regs.includes(lojaReg(p.loja));
+// Dívida em mais de uma loja: p.rateio = JSON [{loja, valor}] (a 1ª é a loja principal; p.valor é a soma)
+const rat=p=>{if(p._rat)return p._rat;try{p._rat=p.rateio?JSON.parse(p.rateio):[]}catch(e){p._rat=[]}return p._rat};
+const partes=p=>rat(p).length?rat(p):[{loja:p.loja,valor:Number(p.valor)||0}];
+const lojaNoFiltro=l=>S.fl.lojas.includes(l)||S.fl.regs.includes(lojaReg(l));
+const vis=p=>!filtroAtivo()||partes(p).some(x=>lojaNoFiltro(x.loja));
+const valorVis=p=>!rat(p).length||!filtroAtivo()?(Number(p.valor)||0):rat(p).filter(x=>lojaNoFiltro(x.loja)).reduce((a,x)=>a+(Number(x.valor)||0),0);
+const lojaTxt=p=>rat(p).length?rat(p).map(x=>x.loja).join(' + '):(p.loja||'');
 function lojasFiltradas(){return lojasDisp().filter(l=>S.fl.lojas.includes(l.nome)||S.fl.regs.includes(l.regional||SEM_REG)).map(l=>l.nome)}
 function filtroNome(){
   if(!filtroAtivo())return ME.lojas&&ME.lojas.length?'Minhas lojas':'Todas as lojas';
@@ -159,7 +165,7 @@ function render(){
 function drawIcons(){try{window.lucide&&lucide.createIcons()}catch(e){}}
 const mseg=(key,opts)=>`<div class="mseg">${opts.map(([v,t,ic])=>`<button class="${S[key]===v?'active':''}" data-set="${key}:${v}">${ic?icon(ic):''}${t}</button>`).join('')}</div>`;
 const kpi=(ic,l,v,s,c,hero)=>`<div class="card kpi ${hero?'hero':''}"><div class="kpi-top"><span class="kchip ${c||''}">${icon(ic)}</span><span class="kpi-l">${l}</span></div><span class="kpi-v num ${hero?'':c||''}">${v}</span>${s?`<span class="kpi-s num">${s}</span>`:''}</div>`;
-const soma=(arr,f)=>arr.reduce((a,x)=>a+(Number(x[f])||0),0);
+const soma=(arr,f)=>arr.reduce((a,x)=>a+(f==='valor'?valorVis(x):(Number(x[f])||0)),0); // valor: só a parte das lojas do filtro
 
 /* ================= Início ================= */
 function painel(){
@@ -263,7 +269,7 @@ function cardGraf(key,titulo,sub,rows,o){
   return `<section class="card" id="card-${key}"><div class="card-h"><h2>${titulo}</h2><span class="sub">${sub}</span>${tools}</div><div class="card-b">${corpo}</div></section>`;
 }
 function corStatus(k){const ord=LISTAS.status.cobranca||[];const i=ord.indexOf(k);return i<0?cssv('--s0'):cssv('--s'+(i%7+1))}
-function porLoja(){const m={};validos().filter(p=>p.tipo==='cobranca').forEach(p=>{const k=p.loja||'Sem loja';m[k]=(m[k]||0)+(Number(p.valor)||0)});return Object.entries(m).sort((a,b)=>b[1]-a[1])}
+function porLoja(){const m={};validos().filter(p=>p.tipo==='cobranca').forEach(p=>partes(p).forEach(x=>{if(rat(p).length&&filtroAtivo()&&!lojaNoFiltro(x.loja))return;const k=x.loja||'Sem loja';m[k]=(m[k]||0)+(Number(x.valor)||0)}));return Object.entries(m).sort((a,b)=>b[1]-a[1])}
 function porStatus(){const m={};validos().filter(p=>p.tipo==='cobranca').forEach(p=>{const k=p.status||'Sem status';m[k]=(m[k]||0)+(Number(p.valor)||0)});const ord=[...(LISTAS.status.cobranca||[]),'Sem status'];return Object.entries(m).sort((a,b)=>ord.indexOf(a[0])-ord.indexOf(b[0]))}
 function proxCustas(){
   const l=[...custasVis().filter(c=>!c.pago&&c.vencimento&&c.vencimento>=HOJE).map(c=>({d:c.vencimento+'9',h:cRow(c,true)})),
@@ -343,7 +349,7 @@ function lista(tipo){
   let head,rows;
   if(tipo==='cobranca'){
     head=`<th>Loja</th><th>Cliente</th><th>Status</th><th class="r">Dívida</th><th class="r">Acordo</th><th class="r">Pago</th><th></th><th>Último andamento</th>`;
-    rows=l.map(p=>`<tr data-open="${p.id}"><td>${esc(p.loja||'–')}</td><td class="desc"><b>${esc(parteNome(p))}</b><span class="nproc">${p.documento&&!isLeitura?esc(p.documento)+' · ':''}${p.codigo_cliente?'Cód. '+esc(p.codigo_cliente)+' · ':''}${p.numero?esc(p.numero):'sem nº de processo'}</span></td><td>${stPill(p.status)} ${autPill(p)}</td><td class="r num">${fmt(p.valor)}</td><td class="r num">${p.valor_acordo?fmt(p.valor_acordo):'–'}</td><td class="r num ${p.valor_pago?'pos':''}">${p.valor_pago?fmt(p.valor_pago):'–'}</td><td>${icons(p)}</td><td class="and"><span>${esc(p.andamento)}</span></td></tr>`).join('');
+    rows=l.map(p=>`<tr data-open="${p.id}"><td>${rat(p).length?`${esc(rat(p)[0].loja)} <span class="tag-lj" title="${esc(lojaTxt(p))}">+${rat(p).length-1}</span>`:esc(p.loja||'–')}</td><td class="desc"><b>${esc(parteNome(p))}</b><span class="nproc">${p.documento&&!isLeitura?esc(p.documento)+' · ':''}${p.codigo_cliente?'Cód. '+esc(p.codigo_cliente)+' · ':''}${p.numero?esc(p.numero):'sem nº de processo'}</span></td><td>${stPill(p.status)} ${autPill(p)}</td><td class="r num">${fmt(p.valor)}</td><td class="r num">${p.valor_acordo?fmt(p.valor_acordo):'–'}</td><td class="r num ${p.valor_pago?'pos':''}">${p.valor_pago?fmt(p.valor_pago):'–'}</td><td>${icons(p)}</td><td class="and"><span>${esc(p.andamento)}</span></td></tr>`).join('');
   }else{
     head=`<th>Nº do processo</th><th>Parte</th><th>Tipo de ação</th><th>Loja</th><th>Status</th><th class="r">Condenação</th><th class="r">Pago</th><th></th>`;
     rows=l.map(p=>`<tr data-open="${p.id}"><td class="num">${esc(p.numero||'–')}</td><td class="desc"><b>${esc(parteNome(p))}</b>${p.identificacao?`<span class="nproc">${esc(p.identificacao)}</span>`:''}</td><td>${esc(p.tipo_acao||'–')}</td><td>${esc(p.loja||'–')}${p.uf?` <span class="tag">${esc(p.uf)}</span>`:''}</td><td>${stPill(p.status)}</td><td class="r num">${p.valor?fmt(p.valor):'–'}</td><td class="r num">${p.valor_pago?fmt(p.valor_pago):'–'}</td><td>${icons(p)}</td></tr>`).join('');
@@ -412,12 +418,25 @@ function camposForm(p,tipo){
   const f=(id,l,v,extra='',full)=>`<div class="fld ${full?'full':''}"><label for="p-${id}">${l}</label><input id="p-${id}" value="${esc(v??'')}" ${extra} ${dJ}></div>`;
   const stSel=`<div class="fld"><label for="p-status">Status</label><select id="p-status" ${dJ}>${opts([...(LISTAS.status[tipo]||[]),...(p.status&&!(LISTAS.status[tipo]||[]).includes(p.status)?[p.status]:[])],p.status||'','Sem status')}</select></div>`;
   const lj=`<div class="fld"><label for="p-loja">Loja</label><select id="p-loja" ${dJ}>${lojaOpts(p.loja||(S.fl.lojas.length===1&&!S.fl.regs.length?S.fl.lojas[0]:''))}</select></div>`;
-  if(tipo==='cobranca')return `${f('parte','Cliente',p.parte,'',true)}${lj}${stSel}${f('codigo_cliente','Código do cliente',p.codigo_cliente)}${f('documento','CNPJ / CPF',p.documento)}${f('numero','Nº do processo',p.numero)}${f('carteira','Carteira',p.carteira)}${f('ano','Ano',p.ano,'inputmode="numeric"')}${f('valor','Valor da dívida (R$)',numIn(p.valor),'inputmode="decimal"')}`;
+  if(tipo==='cobranca'){const r=rat(p);
+    return `${f('parte','Cliente',p.parte,'',true)}${r.length?lj.replace('<select id="p-loja" ','<select id="p-loja" disabled '):lj}${stSel}<div class="fld full rat${r.length?' on':''}" id="rat-box">${ratHTML(r)}</div>${f('codigo_cliente','Código do cliente',p.codigo_cliente)}${f('documento','CNPJ / CPF',p.documento)}${f('numero','Nº do processo',p.numero)}${f('carteira','Carteira',p.carteira)}${f('ano','Ano',p.ano,'inputmode="numeric"')}${f('valor',r.length?'Valor da dívida (R$) <span class="muted">soma das lojas</span>':'Valor da dívida (R$)',numIn(p.valor),'inputmode="decimal"'+(r.length?' readonly':''))}`}
   return `${f('numero','Nº do processo',p.numero)}<div class="fld"><label for="p-identificacao">Identificação</label><select id="p-identificacao" ${dJ}>${opts(LISTAS.identificacoes,p.identificacao||'','–')}</select></div>${f('parte','Parte',p.parte,'',true)}${f('tipo_acao','Tipo de ação',p.tipo_acao,'list="acoes"')}${lj}${f('uf','UF',p.uf,'maxlength="2"')}${f('ano','Ano',p.ano,'inputmode="numeric"')}${stSel}${f('valor','Valor da condenação (R$)',numIn(p.valor),'inputmode="decimal"')}<div class="fld full"><label for="p-teor">Teor do processo</label><textarea id="p-teor" ${dJ} style="min-height:60px">${esc(p.teor||'')}</textarea></div>
   <datalist id="acoes">${[...new Set(P.filter(x=>x.tipo_acao).map(x=>x.tipo_acao))].sort().map(a=>`<option value="${esc(a)}">`).join('')}</datalist>`;
 }
 const CJ=['parte','loja','status','codigo_cliente','documento','numero','carteira','ano','valor','identificacao','tipo_acao','uf','teor'];
-function lerForm(){const d={};CJ.forEach(k=>{const el=$('#p-'+k);if(el)d[k]=el.value.trim()});return d}
+function ratHTML(r){
+  if(!r.length)return canJ?`<button type="button" class="btn sm" data-rat-add="1">${icon('split')}Dívida em mais de uma loja</button>`:'';
+  return `<label>Dívida dividida entre lojas <span class="muted">a primeira é a loja principal</span></label><div class="rat-rows">${r.map((x,i)=>`<div class="rat-r"><select class="rat-l" ${canJ?'':'disabled'} aria-label="Loja ${i+1}">${lojaOpts(x.loja||'')}</select><input class="rat-v" inputmode="decimal" placeholder="Valor (R$)" value="${x.valor?numIn(x.valor):''}" ${canJ?'':'disabled'} aria-label="Valor na loja ${i+1}">${canJ?`<button type="button" class="btn sm" data-rat-del="${i}" title="Tirar esta loja">${icon('x')}</button>`:''}</div>`).join('')}</div>
+    ${canJ?`<button type="button" class="btn sm" data-rat-add="1">${icon('plus')}Outra loja</button>`:''}`;
+}
+function ratLer(){return [...document.querySelectorAll('#rat-box .rat-r')].map(r=>({loja:r.querySelector('.rat-l').value,valor:num(r.querySelector('.rat-v').value)}))}
+function ratDesenhar(r){const b=$('#rat-box');if(!b)return;b.classList.toggle('on',r.length>0);b.innerHTML=ratHTML(r);drawIcons();ratSoma()}
+function ratSoma(){const r=ratLer(),v=$('#p-valor'),lj=$('#p-loja');if(!v)return;
+  if(lj)lj.disabled=r.length>0||!canJ;
+  if(r.length){v.readOnly=true;v.value=numIn(r.reduce((a,x)=>a+(Number(x.valor)||0),0));if(lj&&r[0].loja)lj.value=r[0].loja}else v.readOnly=false}
+function lerForm(){const d={};CJ.forEach(k=>{const el=$('#p-'+k);if(el)d[k]=el.value.trim()});
+  if($('#rat-box')){const r=ratLer().filter(x=>x.loja);d.rateio=r.length>=2?r:''}
+  return d}
 
 function openNovo(tipo){
   tipo=tipo||(S.page==='diversos'?'diversos':'cobranca');
@@ -466,7 +485,7 @@ function renderProc(p){
     ${autH}
     <div class="sec">
       <div class="fin">
-        <div><small>${tipo==='cobranca'?'Dívida':'Condenação'}</small><b class="num">${fmt(p.valor)}</b></div>
+        <div><small>${tipo==='cobranca'?'Dívida':'Condenação'}</small><b class="num">${fmt(p.valor)}</b>${rat(p).length?`<small>${rat(p).map(x=>`${esc(x.loja)} ${fmt(x.valor)}`).join(' · ')}</small>`:''}</div>
         <div><small>Acordo</small><b class="num">${fmt(p.valor_acordo)}</b></div>
         <div><small>Pago</small><b class="num ${p.valor_pago?'pos':''}">${fmt(p.valor_pago)}</b>${p.valor_acordo?`<small>${aRec>0?'falta '+fmt(aRec):'quitado'}</small>`:''}</div>
       </div>
@@ -717,6 +736,8 @@ document.addEventListener('click',async e=>{
     try{const r=await api('/api/importar/previa',{method:'POST',body:fd});$('#mesc-res').innerHTML=mescHTML(r);drawIcons()}catch(er){$('#mesc-res').innerHTML='';toast(er.message)}t.disabled=false;return}
   if(d.mescOk){t.disabled=true;const r=await salvar(()=>api('/api/importar/aplicar',{method:'POST',body:{arquivo:d.mescOk}}));
     $('#mesc-res').innerHTML=`<div class="box ok" style="margin-top:14px">${icon('check')}Pronto: ${r.novos} processos novos, ${r.campos} campos, ${r.custas} custas, ${r.andamentos} andamentos e ${r.anexos} links trazidos da planilha.${r.conflitos?` ${r.conflitos} para conferir ficaram como estavam no BI.`:''} Tudo está no Histórico.</div>`;drawIcons();return}
+  if(d.ratAdd){let r=ratLer();if(!r.length)r=[{loja:($('#p-loja')||{}).value||'',valor:num(($('#p-valor')||{}).value||'')},{loja:'',valor:''}];else r.push({loja:'',valor:''});ratDesenhar(r);return}
+  if(d.ratDel!==undefined){let r=ratLer();r.splice(+d.ratDel,1);if(r.length<2){const s1=r[0];r=[];ratDesenhar(r);if(s1){if(s1.loja&&$('#p-loja'))$('#p-loja').value=s1.loja;if($('#p-valor'))$('#p-valor').value=s1.valor?numIn(s1.valor):''}}else ratDesenhar(r);return}
   if(d.anexarCusta){anexoForm(ABERTO,+d.anexarCusta,d.cat);return}
   if(d.fecharForm){$('#'+d.fecharForm).innerHTML='';return}
   if(d.delAnexo){if(!confirma(t,icon('check')))return;await salvar(()=>api('/api/anexos/'+d.delAnexo,{method:'DELETE'}),'Anexo removido.');openProc(ABERTO);return}
@@ -730,6 +751,7 @@ document.addEventListener('click',async e=>{
   if(t.id==='themeBtn'){const n=isDark()?'light':'dark';document.documentElement.dataset.theme=n;try{localStorage.setItem('bj-theme',n)}catch(er){}render();return}
 });
 document.addEventListener('change',e=>{
+  if(e.target.closest&&e.target.closest('#rat-box')){ratSoma();return}
   if(e.target.dataset.pagArq){const fd=new FormData();[...e.target.files].forEach(x=>fd.append('arquivo',x));fd.append('categoria','Comprovante');fd.append('pagamento_id',e.target.dataset.pagArq);
     salvar(()=>api(`/api/processos/${ABERTO}/anexos`,{method:'POST',body:fd}),'Comprovante anexado.').then(()=>openProc(ABERTO)).catch(()=>{});return}
   if(e.target.dataset.ureg!==undefined){const r=e.target.dataset.ureg;document.querySelectorAll(`input[name="u-loja"]`).forEach(x=>{if(x.dataset.uregDe===r)x.checked=e.target.checked});return}
@@ -741,7 +763,7 @@ document.addEventListener('change',e=>{
   if(e.target.dataset.ord){S.ord=e.target.value;render();return}
 });
 let qT;
-document.addEventListener('input',e=>{if(e.target.id==='q'){S.q=e.target.value;clearTimeout(qT);qT=setTimeout(()=>{const pos=e.target.selectionStart;render();const q=$('#q');if(q){q.focus();q.setSelectionRange(pos,pos)}},180)}});
+document.addEventListener('input',e=>{if(e.target.classList&&e.target.classList.contains('rat-v')){ratSoma();return}if(e.target.id==='q'){S.q=e.target.value;clearTimeout(qT);qT=setTimeout(()=>{const pos=e.target.selectionStart;render();const q=$('#q');if(q){q.focus();q.setSelectionRange(pos,pos)}},180)}});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&$('#layer').innerHTML)closeLayer()});
 
 const num=v=>{v=String(v||'').trim();if(!v)return '';if(/,/.test(v))v=v.replace(/\./g,'').replace(',','.');return v};

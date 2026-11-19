@@ -42,6 +42,9 @@ def loja_canonica(s):
     k = _chave(s)
     if not k or k == "none":
         return ""
+    if " + " in str(s):  # "Palmas + Araguaína" (escrito pelo sistema): a principal é a primeira
+        s = str(s).split(" + ")[0]
+        k = _chave(s)
     from db import FILIAIS, chave_loja
     nomes = {chave_loja(n): n for _, n, _ in FILIAIS}
     if chave_loja(s) in nomes:  # nome oficial da filial (com acento e hífen certos)
@@ -369,6 +372,8 @@ def planejar(itens, base_itens=None):
                 continue
             pid = p["id"]
             for f in CAMPOS_MESCLA:
+                if f in ("loja", "valor") and p.get("rateio"):
+                    continue  # dívida dividida entre lojas: loja e valor só mudam pelo BI
                 novo = it.get(f)
                 if f == "uf" and it["tipo"] == "cobranca":
                     continue

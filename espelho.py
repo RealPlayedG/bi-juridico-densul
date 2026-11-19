@@ -170,7 +170,14 @@ def montar_linhas():
     cob, div = [], []
     for p in ps:
         if p["tipo"] == "cobranca":
-            cob.append([p["loja"] or "", p["carteira"] or "", p["ano"] or "", p["codigo_cliente"] or "", _link(p["parte"], nota.get(p["id"])),
+            lj = p["loja"] or ""
+            try:  # dívida em mais de uma loja: "Palmas + Araguaína"
+                r = json.loads(p.get("rateio") or "[]")
+                if isinstance(r, list) and len(r) >= 2:
+                    lj = " + ".join(x["loja"] for x in r)
+            except (ValueError, TypeError, KeyError):
+                pass
+            cob.append([lj, p["carteira"] or "", p["ano"] or "", p["codigo_cliente"] or "", _link(p["parte"], nota.get(p["id"])),
                         p["documento"] or "", _num(p["valor"]), ult.get(p["id"], ""), p["status"] or "", p["numero"] or "",
                         _num(p["valor_acordo"]), _num(p["valor_pago"]), custa(p["id"], True), custa(p["id"], False)])
         else:
