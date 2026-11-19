@@ -324,7 +324,10 @@ function filtrados(tipo){
   else if(S.st==='conferir')l=l.filter(p=>norm(p.andamento).startsWith('conferir'));
   else if(S.st==='custas')l=l.filter(p=>C.some(c=>c.processo_id===p.id&&!c.pago));
   else if(S.st!=='todos')l=l.filter(p=>(p.status||'Sem status')===S.st);
-  if(q)l=l.filter(p=>norm([p.parte,p.numero,p.codigo_cliente,p.documento,p.loja,p.tipo_acao,p.andamento,p.identificacao].join(' ')).includes(q));
+  // CNPJ/CPF e nº do processo: compara só os números, com ou sem ponto, barra e traço (45.299.855/0001-01 = 45299855000101)
+  const qd=/^[\d.\-\/\s]+$/.test(S.q.trim())?S.q.replace(/\D/g,''):'';
+  if(q)l=l.filter(p=>norm([p.parte,p.numero,p.codigo_cliente,p.documento,p.loja,p.tipo_acao,p.andamento,p.identificacao].join(' ')).includes(q)
+    ||(qd.length>=3&&[p.documento,p.numero,p.parte].some(x=>String(x||'').replace(/\D/g,'').includes(qd))));
   const o={padrao:(a,b)=>(a.loja||'').localeCompare(b.loja||'')||parteNome(a).localeCompare(parteNome(b)),valor:(a,b)=>(Number(b.valor)||0)-(Number(a.valor)||0),recente:(a,b)=>(b.andamento_em||b.atualizado_em||'').localeCompare(a.andamento_em||a.atualizado_em||''),nome:(a,b)=>parteNome(a).localeCompare(parteNome(b))};
   return l.sort(o[S.ord]||o.padrao);
 }
@@ -348,7 +351,7 @@ function lista(tipo){
   const cols=8,tv=soma(l,'valor');
   return `<div class="ph"><div><h1>${TIPO_NOME[tipo]}</h1><p>${l.length} de ${todos.length} processos${tv?' · '+fmt0(tv):''}</p></div><div class="ph-actions">${isLeitura?'':`<button class="btn" data-csv="${tipo}">${icon('download')}Exportar</button>`}${canJ?`<button class="btn primary" data-act="novo" data-tipo="${tipo}">${icon('plus')}Novo processo</button>`:''}</div></div>
   <section class="card"><div class="flt-row">${chips.map(([k,t,n])=>`<button class="chip ${S.st===k?'active':''}" data-st="${esc(k)}">${esc(t)} <small>${n}</small></button>`).join('')}</div>
-  <div class="filters"><select class="mseg" data-ord="1" aria-label="Ordenar" style="border:0;padding:7px 10px;font-size:12.5px;font-weight:500">${[['padrao','Ordenar por loja'],['nome','Por nome'],['valor','Maior valor'],['recente','Atualizados recentemente']].map(([k,t])=>`<option value="${k}" ${S.ord===k?'selected':''}>${t}</option>`).join('')}</select><label class="search">${icon('search')}<input id="q" placeholder="Buscar cliente, nº, código..." value="${esc(S.q)}"></label></div>
+  <div class="filters"><select class="mseg" data-ord="1" aria-label="Ordenar" style="border:0;padding:7px 10px;font-size:12.5px;font-weight:500">${[['padrao','Ordenar por loja'],['nome','Por nome'],['valor','Maior valor'],['recente','Atualizados recentemente']].map(([k,t])=>`<option value="${k}" ${S.ord===k?'selected':''}>${t}</option>`).join('')}</select><label class="search">${icon('search')}<input id="q" placeholder="Buscar cliente, CNPJ/CPF, nº, código..." value="${esc(S.q)}"></label></div>
   <div class="tbl-wrap"><table><thead><tr>${head}</tr></thead><tbody>${rows||`<tr><td colspan="${cols}" class="empty" style="padding:24px 12px">Nenhum processo encontrado.</td></tr>`}</tbody></table></div></section>`;
 }
 function exportarCSV(tipo){
@@ -591,7 +594,7 @@ function admBody(){
     if(!ADM.historico)return '<div class="loading" style="min-height:160px"><span class="spin"></span></div>';
     const H=ADM.historico,F=ADM.hf||{usuario:'',q:''};
     return `<section class="card"><div class="card-h"><h2>Histórico</h2><span class="sub">quem fez o quê, do mais recente para o mais antigo</span></div>
-    <form id="f-hist" class="filters"><select id="h-quem" class="mseg" style="border:0;padding:8px 10px;font-size:13px" aria-label="Pessoa"><option value="">Todas as pessoas</option>${(ADM.pessoas||[]).map(p=>`<option value="${esc(p.usuario)}" ${F.usuario===p.usuario?'selected':''}>${esc(p.nome)} (${esc(p.usuario)})</option>`).join('')}</select><label class="search">${icon('search')}<input id="h-q" placeholder="Buscar ação, cliente, nº do processo..." value="${esc(F.q)}"></label><button class="btn sm primary">Filtrar</button></form>
+    <form id="f-hist" class="filters"><select id="h-quem" class="mseg" style="border:0;padding:8px 10px;font-size:13px" aria-label="Pessoa"><option value="">Todas as pessoas</option>${(ADM.pessoas||[]).map(p=>`<option value="${esc(p.usuario)}" ${F.usuario===p.usuario?'selected':''}>${esc(p.nome)} (${esc(p.usuario)})</option>`).join('')}</select><label class="search">${icon('search')}<input id="h-q" placeholder="Buscar ação, cliente, CNPJ/CPF, nº..." value="${esc(F.q)}"></label><button class="btn sm primary">Filtrar</button></form>
     <div class="log">${H.length?H.map(h=>`<div class="log-row"><time>${brDT(h.em)}</time><span class="av eq">${esc((h.nome||'?')[0])}</span><div class="lg-d"><b>${esc(h.nome)}</b> <span class="muted">(${esc(h.usuario)})</span> · ${esc(h.acao)}${h.parte?` · <a href="#" data-open="${h.processo_id}">${esc(h.parte)}</a>`:''}${h.detalhes?`<small>${esc(fmtDet(h.detalhes))}</small>`:''}${h.ip?`<small>IP ${esc(h.ip)}</small>`:''}</div></div>`).join(''):'<p class="empty" style="padding:16px 20px">Nada encontrado.</p>'}</div>${H.length&&H.length%100===0?`<div class="card-b"><button class="btn" data-hist-mais="1">Carregar mais</button></div>`:''}</section>`;
   }
   if(S.adm==='backups'){
