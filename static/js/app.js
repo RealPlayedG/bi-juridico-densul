@@ -406,13 +406,19 @@ function pgCustas(){
 }
 
 /* ================= Janelas ================= */
-function closeLayer(){$('#layer').innerHTML='';ABERTO=null}
+function closeLayer(forca){if(!forca&&SUJO&&$('#f-proc')&&avisarSujo())return;$('#layer').innerHTML='';ABERTO=null;SUJO=null}
 function openLayer(html,drawer=false){$('#layer').innerHTML=`<div class="overlay ${drawer?'drawer':''}" data-close="1"><div class="modal" role="dialog" aria-modal="true">${html}</div></div>`;drawIcons();if(!drawer){const f=document.querySelector('#layer input:not([type=checkbox]):not([type=file]),#layer select,#layer textarea');if(f)f.focus()}}
 const mh=t=>`<div class="m-h"><h2>${t}</h2><button class="x" data-close="1" aria-label="Fechar">${icon('x')}</button></div>`;
 function toast(t){const el=document.createElement('div');el.className='toast';el.textContent=t;document.body.appendChild(el);setTimeout(()=>el.remove(),2600)}
 const opts=(arr,sel,vazio)=>(vazio!==undefined?`<option value="">${vazio}</option>`:'')+arr.map(v=>`<option ${v===sel?'selected':''}>${esc(v)}</option>`).join('');
 const lojaOpts=sel=>{const ls=(ME.lojas&&ME.lojas.length?ME.lojas:LOJAS.map(l=>l.nome));const all=sel&&!ls.includes(sel)?[sel,...ls]:ls;return opts(all,sel,'Escolha')};
-const numIn=v=>v==null||v===''?'':Number(v).toFixed(2);
+// Valores no padrão brasileiro: 34.477,01 (o campo formata ao sair dele; num() lê de volta)
+const numIn=v=>v==null||v===''||isNaN(Number(v))?'':Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+const soDig=v=>String(v||'').replace(/\D/g,'');
+// CPF 000.000.000-00 (até 11 números) e CNPJ 00.000.000/0000-00 (até 14), formatando enquanto digita
+function docFmt(v){const s=String(v||'');if(!/^[\d.\/\-\s]*$/.test(s))return s;const d=soDig(s).slice(0,14);
+  if(d.length<=11)return d.replace(/^(\d{3})(\d)/,'$1.$2').replace(/^(\d{3})\.(\d{3})(\d)/,'$1.$2.$3').replace(/\.(\d{3})(\d{1,2})$/,'.$1-$2');
+  return d.replace(/^(\d{2})(\d)/,'$1.$2').replace(/^(\d{2})\.(\d{3})(\d)/,'$1.$2.$3').replace(/\.(\d{3})(\d)/,'.$1/$2').replace(/(\d{4})(\d{1,2})$/,'$1-$2')}
 
 function camposForm(p,tipo){
   const dJ=canJ?'':'disabled';
@@ -420,14 +426,14 @@ function camposForm(p,tipo){
   const stSel=`<div class="fld"><label for="p-status">Status</label><select id="p-status" ${dJ}>${opts([...(LISTAS.status[tipo]||[]),...(p.status&&!(LISTAS.status[tipo]||[]).includes(p.status)?[p.status]:[])],p.status||'','Sem status')}</select></div>`;
   const lj=`<div class="fld"><label for="p-loja">Loja</label><select id="p-loja" ${dJ}>${lojaOpts(p.loja||(S.fl.lojas.length===1&&!S.fl.regs.length?S.fl.lojas[0]:''))}</select></div>`;
   if(tipo==='cobranca'){const r=rat(p);
-    return `${f('parte','Cliente',p.parte,'',true)}${r.length?lj.replace('<select id="p-loja" ','<select id="p-loja" disabled '):lj}${stSel}<div class="fld full rat${r.length?' on':''}" id="rat-box">${ratHTML(r)}</div>${f('codigo_cliente','Código do cliente',p.codigo_cliente)}${f('documento','CNPJ / CPF',p.documento)}${f('numero','Nº do processo',p.numero)}${f('carteira','Carteira',p.carteira)}${f('ano','Ano',p.ano,'inputmode="numeric"')}${f('valor',r.length?'Valor da dívida (R$) <span class="muted">soma das lojas</span>':'Valor da dívida (R$)',numIn(p.valor),'inputmode="decimal"'+(r.length?' readonly':''))}`}
-  return `${f('numero','Nº do processo',p.numero)}<div class="fld"><label for="p-identificacao">Identificação</label><select id="p-identificacao" ${dJ}>${opts(LISTAS.identificacoes,p.identificacao||'','–')}</select></div>${f('parte','Parte',p.parte,'',true)}${f('tipo_acao','Tipo de ação',p.tipo_acao,'list="acoes"')}${lj}${f('uf','UF',p.uf,'maxlength="2"')}${f('ano','Ano',p.ano,'inputmode="numeric"')}${stSel}${f('valor','Valor da condenação (R$)',numIn(p.valor),'inputmode="decimal"')}<div class="fld full"><label for="p-teor">Teor do processo</label><textarea id="p-teor" ${dJ} style="min-height:60px">${esc(p.teor||'')}</textarea></div>
+    return `${f('parte','Cliente',p.parte,'',true)}${r.length?lj.replace('<select id="p-loja" ','<select id="p-loja" disabled '):lj}${stSel}<div class="fld full rat${r.length?' on':''}" id="rat-box">${ratHTML(r)}</div>${f('codigo_cliente','Código do cliente',p.codigo_cliente)}${f('documento','CNPJ / CPF',docFmt(p.documento),`inputmode="numeric" data-doc="1" data-orig="${esc(p.documento||'')}" placeholder="00.000.000/0000-00"`)}${f('numero','Nº do processo',p.numero)}${f('carteira','Carteira',p.carteira)}${f('ano','Ano',p.ano,'inputmode="numeric"')}${f('valor',r.length?'Valor da dívida (R$) <span class="muted">soma das lojas</span>':'Valor da dívida (R$)',numIn(p.valor),'inputmode="decimal" class="money" placeholder="0,00"'+(r.length?' readonly':''))}`}
+  return `${f('numero','Nº do processo',p.numero)}<div class="fld"><label for="p-identificacao">Identificação</label><select id="p-identificacao" ${dJ}>${opts(LISTAS.identificacoes,p.identificacao||'','–')}</select></div>${f('parte','Parte',p.parte,'',true)}${f('tipo_acao','Tipo de ação',p.tipo_acao,'list="acoes"')}${lj}${f('uf','UF',p.uf,'maxlength="2"')}${f('ano','Ano',p.ano,'inputmode="numeric"')}${stSel}${f('valor','Valor da condenação (R$)',numIn(p.valor),'inputmode="decimal" class="money" placeholder="0,00"')}<div class="fld full"><label for="p-teor">Teor do processo</label><textarea id="p-teor" ${dJ} style="min-height:60px">${esc(p.teor||'')}</textarea></div>
   <datalist id="acoes">${[...new Set(P.filter(x=>x.tipo_acao).map(x=>x.tipo_acao))].sort().map(a=>`<option value="${esc(a)}">`).join('')}</datalist>`;
 }
 const CJ=['parte','loja','status','codigo_cliente','documento','numero','carteira','ano','valor','identificacao','tipo_acao','uf','teor'];
 function ratHTML(r){
   if(!r.length)return canJ?`<button type="button" class="btn sm" data-rat-add="1">${icon('split')}Dívida em mais de uma loja</button>`:'';
-  return `<label>Dívida dividida entre lojas <span class="muted">a primeira é a loja principal</span></label><div class="rat-rows">${r.map((x,i)=>`<div class="rat-r"><select class="rat-l" ${canJ?'':'disabled'} aria-label="Loja ${i+1}">${lojaOpts(x.loja||'')}</select><input class="rat-v" inputmode="decimal" placeholder="Valor (R$)" value="${x.valor?numIn(x.valor):''}" ${canJ?'':'disabled'} aria-label="Valor na loja ${i+1}">${canJ?`<button type="button" class="btn sm" data-rat-del="${i}" title="Tirar esta loja">${icon('x')}</button>`:''}</div>`).join('')}</div>
+  return `<label>Dívida dividida entre lojas <span class="muted">a primeira é a loja principal</span></label><div class="rat-rows">${r.map((x,i)=>`<div class="rat-r"><select class="rat-l" ${canJ?'':'disabled'} aria-label="Loja ${i+1}">${lojaOpts(x.loja||'')}</select><input class="rat-v money" inputmode="decimal" placeholder="Valor (R$)" value="${x.valor?numIn(x.valor):''}" ${canJ?'':'disabled'} aria-label="Valor na loja ${i+1}">${canJ?`<button type="button" class="btn sm" data-rat-del="${i}" title="Tirar esta loja">${icon('x')}</button>`:''}</div>`).join('')}</div>
     ${canJ?`<button type="button" class="btn sm" data-rat-add="1">${icon('plus')}Outra loja</button>`:''}`;
 }
 function ratLer(){return [...document.querySelectorAll('#rat-box .rat-r')].map(r=>({loja:r.querySelector('.rat-l').value,valor:num(r.querySelector('.rat-v').value)}))}
@@ -436,6 +442,8 @@ function ratSoma(){const r=ratLer(),v=$('#p-valor'),lj=$('#p-loja');if(!v)return
   if(lj)lj.disabled=r.length>0||!canJ;
   if(r.length){v.readOnly=true;v.value=numIn(r.reduce((a,x)=>a+(Number(x.valor)||0),0));if(lj&&r[0].loja)lj.value=r[0].loja}else v.readOnly=false}
 function lerForm(){const d={};CJ.forEach(k=>{const el=$('#p-'+k);if(el)d[k]=el.value.trim()});
+  const dc=$('#p-documento');if(dc&&soDig(dc.value)===soDig(dc.dataset.orig)&&dc.dataset.orig)d.documento=dc.dataset.orig; // só a formatação mudou: não conta como alteração
+  if('valor' in d)d.valor=num(d.valor);
   if($('#rat-box')){const r=ratLer().filter(x=>x.loja);d.rateio=r.length>=2?r:''}
   return d}
 
@@ -448,7 +456,8 @@ function openNovo(tipo){
 }
 
 /* ---------- Detalhe do processo ---------- */
-let ABERTO=null;
+let ABERTO=null,PTAB='dados',SUJO=null;
+/* ---------- 4. Alterações não salvas nos dados do processo ---------- */
 /* ---------- Perfil (rodapé da barra lateral) e foto ---------- */
 function avatar(cls=''){const c=ME.perfil==='financeiro'?'sec':ME.perfil==='admin'?'eq':'dono';
   return ME.foto?`<span class="av foto ${cls}"><img src="${esc(ME.foto)}" alt=""></span>`:`<span class="av ${c} ${cls}">${esc(iniciais(ME.nome))}</span>`}
@@ -463,10 +472,15 @@ function perfilHTML(){
       <a class="sm-i sair" role="menuitem" href="/sair">${icon('log-out')}Sair</a></div>`:''}`;
 }
 function redesenharPerfil(){$('#sideMe').innerHTML=perfilHTML();const pm=$('#profile .me .av');if(pm)pm.outerHTML=avatar();drawIcons()}
+function lerSujo(){const f=$('#f-proc');if(!f)return null;const v={};f.querySelectorAll('input,select,textarea').forEach((el,i)=>{v[el.id||('i'+i)]=el.type==='checkbox'?el.checked:el.value});return v}
+function marcarSujo(){if(!SUJO)return;const b=$('#dirty-bar');if(b&&!b.innerHTML){b.innerHTML=`<div class="dirty">${icon('circle-alert')}<span>Você mudou os dados do processo e ainda não salvou.</span><button type="button" class="btn sm" data-sujo-desc="1">Descartar</button><button type="button" class="btn sm primary" data-sujo-salvar="1">${icon('check')}Salvar alterações</button></div>`;drawIcons()}}
+function avisarSujo(){if(!SUJO)return false;PTAB='dados';document.querySelectorAll('.pr-tabs [data-ptab]').forEach(x=>{x.classList.toggle('on',x.dataset.ptab==='dados');x.setAttribute('aria-selected',x.dataset.ptab==='dados')});document.querySelectorAll('.pane').forEach(x=>x.classList.toggle('on',x.dataset.pane==='dados'));
+  marcarSujo();const b=$('#dirty-bar .dirty');if(b){b.classList.remove('pisca');void b.offsetWidth;b.classList.add('pisca');b.scrollIntoView({block:'nearest',behavior:'smooth'})}return true}
 async function openProc(id){
+  if(id!==ABERTO){PTAB='';SUJO=null}  // outro processo: começa na primeira aba
   ABERTO=id;
   openLayer(`${mh('Carregando...')}<div class="m-b"><div class="loading" style="min-height:200px"><span class="spin"></span></div></div>`,true);
-  try{const p=await api('/api/processos/'+id);if(ABERTO===id)renderProc(p)}catch(e){toast(e.message);closeLayer()}
+  try{const p=await api('/api/processos/'+id);if(ABERTO===id)renderProc(p)}catch(e){toast(e.message);closeLayer(true)}
 }
 function renderProc(p){
   const tipo=p.tipo,aRec=(Number(p.valor_acordo)||0)-(Number(p.valor_pago)||0);
@@ -495,62 +509,90 @@ function renderProc(p){
     <div id="pag-form"></div></div>`;
   const anexH=anxs.length?`<ul class="anx-list">${anxs.map(a=>`<li><a href="${esc(a.url)}" target="_blank" rel="noopener">${icon(a.link?'external-link':'file')}<span>${esc(a.categoria)}: ${esc(a.nome)}</span><small class="muted">${esc(a.por)} · ${brDate(a.em)}</small></a>${a.por===ME.nome||isAdmin?`<button class="anx-del" data-del-anexo="${a.id}" title="Remover">${icon('trash-2')}</button>`:''}</li>`).join('')}</ul>`:'<p class="empty">Nenhum anexo.</p>';
   const hist=p.historico.map(h=>{const det=h.detalhes?fmtDet(h.detalhes):'';return `<div><b>${esc(h.acao)}</b> · ${esc(h.nome)} (${esc(h.usuario)}) · ${brDT(h.em)}${det?`<br><span style="white-space:pre-wrap">${esc(det)}</span>`:''}</div>`}).join('')||'Sem registros.';
-  openLayer(`<div class="m-h"><div style="min-width:0"><h2 style="overflow:hidden;text-overflow:ellipsis">${esc(parteNome(p))}</h2><small class="muted">${TIPO_NOME[tipo]} · ${p.numero?esc(p.numero):'sem nº de processo'}</small></div><button class="x" data-close="1" aria-label="Fechar">${icon('x')}</button></div>
-  <div class="m-b">
-    ${autH}
-    <div class="sec">
-      <div class="fin">
-        <div><small>${tipo==='cobranca'?'Dívida':'Condenação'}</small><b class="num">${fmt(p.valor)}</b>${rat(p).length?`<small>${rat(p).map(x=>`${esc(x.loja)} ${fmt(x.valor)}`).join(' · ')}</small>`:''}</div>
-        <div><small>Acordo</small><b class="num">${fmt(p.valor_acordo)}</b></div>
-        <div><small>Pago</small><b class="num ${p.valor_pago?'pos':''}">${fmt(p.valor_pago)}</b>${p.valor_acordo?`<small>${aRec>0?'falta '+fmt(aRec):'quitado'}</small>`:''}</div>
-      </div>
+  // Resumo fixo no topo + abas (todas ficam na tela, só escondidas: nada se perde ao trocar de aba)
+  const prox=p.custas.filter(c=>!c.pago&&c.vencimento).sort((a,b)=>a.vencimento<b.vencimento?-1:1)[0];
+  const proxA=p.audiencias.filter(a=>!a.finalizada&&a.data>=HOJE).sort((a,b)=>(a.data+a.hora)<(b.data+b.hora)?-1:1)[0];
+  const faltaFin=p.audiencias.filter(a=>!a.finalizada&&a.data<HOJE).length;
+  const resumo=`<div class="pr-res">
+    <div class="pr-chips">${stPill(p.status)}<span class="pr-c">${icon('store')}${esc(lojaTxt(p)||'sem loja')}</span>${p.codigo_cliente?`<span class="pr-c">${icon('hash')}Cód. ${esc(p.codigo_cliente)}</span>`:''}${p.documento&&!isLeitura?`<span class="pr-c">${icon('id-card')}${esc(docFmt(p.documento))}</span>`:''}${isTrab(p)?trabTag:''}</div>
+    <div class="fin">
+      <div><small>${tipo==='cobranca'?'Dívida':'Condenação'}</small><b class="num">${fmt(p.valor)}</b>${rat(p).length?`<small>${rat(p).map(x=>`${esc(x.loja)} ${fmt(x.valor)}`).join(' · ')}</small>`:''}</div>
+      <div><small>Acordo</small><b class="num">${fmt(p.valor_acordo)}</b></div>
+      <div><small>Pago</small><b class="num ${p.valor_pago?'pos':''}">${fmt(p.valor_pago)}</b>${p.valor_acordo?`<small>${aRec>0?'falta '+fmt(aRec):'quitado'}</small>`:''}</div>
     </div>
-    <form class="sec" id="f-proc" data-id="${p.id}" data-tipo="${tipo}">
-      <div class="sec-h"><h3>${icon('file-text')}Dados do processo</h3>${canJ?'':`<span class="lock" style="margin-left:auto">${icon(isLeitura?'eye':'lock')}${isLeitura?'Só visualização':'Só o jurídico edita'}</span>`}</div>
+    <div class="pr-prox">
+      <span class="${prox&&prox.vencimento<HOJE?'neg':''}">${icon('receipt')}${prox?`Próxima custa: <b>${brDate(prox.vencimento)}</b> (${esc(prox.tipo.toLowerCase())})${prox.vencimento<HOJE?' · vencida':''}`:'Nenhuma custa em aberto'}</span>
+      <span class="${faltaFin?'warn':''}">${icon('gavel')}${proxA?`Próxima audiência: <b>${brDate(proxA.data)}${audHora(proxA)}</b>`:faltaFin?`<b>${faltaFin} audiência${faltaFin>1?'s':''} para finalizar</b>`:'Nenhuma audiência marcada'}</span>
+    </div></div>`;
+  const nA=p.andamentos.filter(a=>!norm(a.texto).startsWith('conferir')).length;
+  const abas=[
+    ['dados','file-text','Dados',''],
+    ['andamentos','list','Andamentos',nA],
+    ...(tipo==='cobranca'&&(p.linha_tempo||[]).length?[['linha','route','Linha do tempo','']]:[]),
+    ['agenda','calendar-clock','Custas e audiências',p.custas.length+p.audiencias.length],
+    ...(tipo==='cobranca'||pgs.length?[['pagamentos','hand-coins','Pagamentos',pgs.length]]:[]),
+    ...(isLeitura?[]:[['anexos','paperclip','Anexos',anxs.length],['historico','history','Histórico','']]),
+  ];
+  if(!abas.some(a=>a[0]===PTAB))PTAB=isLeitura&&abas.some(a=>a[0]==='linha')?'linha':'dados';
+  const pane=(k,html)=>`<div class="pane${k===PTAB?' on':''}" data-pane="${k}">${html}</div>`;
+  openLayer(`<div class="m-h"><div style="min-width:0"><h2 style="overflow:hidden;text-overflow:ellipsis">${esc(parteNome(p))}</h2><small class="muted">${TIPO_NOME[tipo]} · ${p.numero?esc(p.numero):'sem nº de processo'}</small></div><button class="x" data-close="1" aria-label="Fechar">${icon('x')}</button></div>
+  <div class="m-b pr">
+    ${autH}
+    ${resumo}
+    <div class="pr-tabs" role="tablist">${abas.map(([k,ic,t,n])=>`<button type="button" role="tab" aria-selected="${k===PTAB}" class="${k===PTAB?'on':''}" data-ptab="${k}">${icon(ic)}${t}${n!==''&&n?`<em>${n}</em>`:''}</button>`).join('')}</div>
+    <div id="dirty-bar"></div>
+    ${pane('dados',`    <form class="sec" id="f-proc" data-id="${p.id}" data-tipo="${tipo}">
+      ${canJ?'':`<div class="sec-h"><span class="lock" style="margin-left:auto">${icon(isLeitura?'eye':'lock')}${isLeitura?'Só visualização':'Só o jurídico edita'}</span></div>`}
       <div class="frm">${camposForm(p,tipo)}</div>
       <div class="sec-h" style="margin-top:6px"><h3>${icon('wallet')}Valores</h3></div>
       <div class="frm">
-        <div class="fld"><label for="p-valor_acordo">Valor do acordo (R$)</label><input id="p-valor_acordo" inputmode="decimal" value="${numIn(p.valor_acordo)}" ${canJ?'':'disabled'}></div>
+        <div class="fld"><label for="p-valor_acordo">Valor do acordo (R$)</label><input id="p-valor_acordo" class="money" placeholder="0,00" inputmode="decimal" value="${numIn(p.valor_acordo)}" ${canJ?'':'disabled'}></div>
         <div class="fld"><label>Valor pago (R$) <span class="muted">soma dos pagamentos</span></label><input value="${p.valor_pago?fmt(p.valor_pago):''}" disabled placeholder="Nenhum pagamento"></div>
         <label class="check fld full"><input type="checkbox" id="p-conferido" ${p.conferido?'checked':''} ${canF?'':'disabled'}>Recebimento conferido pelo financeiro${p.conferido?` <span class="muted">(${esc(p.conferido_por)}, ${brDT(p.conferido_em)})</span>`:''}</label>
       </div>
       ${canJ||canF?`<div class="acts" style="display:flex;justify-content:flex-end;gap:8px">${canJ?`<button type="button" class="btn danger" data-excluir="${p.id}">${icon('trash-2')}Excluir</button><button type="button" class="btn" data-mover="${p.tipo==='diversos'?'cobranca':'diversos'}" data-pid="${p.id}" title="Cadastrado na aba errada">${icon('arrow-right-left')}Mover para ${p.tipo==='diversos'?'Cobrança':'Diversos'}</button>`:''}<button class="btn primary" type="submit">${icon('check')}Salvar alterações</button></div>`:''}
     </form>
-    ${tipo==='cobranca'&&(p.linha_tempo||[]).length?`<div class="sec"><details class="more-h"${isLeitura?' open':''}><summary>${icon('route')}Linha do tempo (${p.linha_tempo.length})</summary>${ltHTML(p.linha_tempo)}</details></div>`:''}
-    ${tipo==='cobranca'||pgs.length?`<div class="sec">
-      <div class="sec-h"><h3>${icon('hand-coins')}Pagamentos do cliente</h3><span class="muted" style="font-size:12.5px">entrada e parcelas</span>${canF?`<button class="btn sm" style="margin-left:auto" data-novo-pag="${p.id}">${icon('plus')}Lançar pagamento</button>`:''}</div>
-      ${pagH}
-    </div>`:''}
-    <div class="sec">
+`)}
+    ${pane('andamentos',`    <div class="sec">
       <div class="sec-h"><h3>${icon('list')}Andamento</h3></div>
       ${canJ?`<form id="f-and" data-id="${p.id}" class="reply" style="border:0;padding:0"><textarea id="and-t" placeholder="O que aconteceu no processo?"></textarea><button class="btn primary" aria-label="Adicionar andamento">${icon('send')}</button></form>`:''}
       ${p.andamentos.length?`<ul class="tl">${p.andamentos.map(a=>`<li class="${norm(a.texto).startsWith('conferir')?'conferir':''}${a.audiencia_id?' aud':''}"><small>${brDT(a.em)} · ${esc(a.por)}${a.audiencia_id?` <span class="tag-aud">${icon('gavel')}Audiência</span>`:''}</small>${esc(a.texto)}</li>`).join('')}</ul>`:'<p class="empty">Nenhum andamento.</p>'}
     </div>
-    <div class="sec">
+`)}
+    ${pane('linha',tipo==='cobranca'&&(p.linha_tempo||[]).length?`<div class="sec">${ltHTML(p.linha_tempo)}</div>`:'')}
+    ${pane('agenda',`    <div class="sec">
       <div class="sec-h"><h3>${icon('gavel')}Audiências</h3>${canJ?`<button class="btn sm" data-nova-aud="${p.id}">${icon('plus')}Nova audiência</button>`:''}</div>
       <div id="aud-form"></div>
       ${audH}
     </div>
-    <div class="sec">
+     <div class="sec">
       <div class="sec-h"><h3>${icon('receipt')}Custas</h3>${canJ?`<button class="btn sm" data-nova-custa="${p.id}">${icon('plus')}Nova custa</button>`:''}</div>
       <div id="custa-form"></div>
       ${custasH}
     </div>
-    ${isLeitura?'':`<div class="sec anexos">
+`)}
+    ${pane('pagamentos',`    ${tipo==='cobranca'||pgs.length?`<div class="sec">
+      <div class="sec-h"><h3>${icon('hand-coins')}Pagamentos do cliente</h3><span class="muted" style="font-size:12.5px">entrada e parcelas</span>${canF?`<button class="btn sm" style="margin-left:auto" data-novo-pag="${p.id}">${icon('plus')}Lançar pagamento</button>`:''}</div>
+      ${pagH}
+    </div>`:''}
+`)}
+    ${isLeitura?'':pane('anexos',`<div class="sec anexos">
       <div class="sec-h"><h3>${icon('paperclip')}Anexos</h3><button class="btn sm" data-anexar="${p.id}">${icon('upload')}Anexar</button></div>
       <div id="anx-form"></div>
       ${anexH}
     </div>
-    <div class="sec"><details class="more-h"><summary>${icon('history')}Histórico de alterações (${p.historico.length})</summary><div class="hist" style="margin-top:10px">${hist}</div></details></div>`}
+`)+pane('historico',`<div class="sec"><div class="hist">${hist}</div></div>`)}
   </div>`,true);
   window._P=p;
+  if(SUJO&&SUJO.id===p.id){const f=$('#f-proc');Object.entries(SUJO.v).forEach(([k,v])=>{const el=f&&f.querySelector('#'+CSS.escape(k));if(el){if(el.type==='checkbox')el.checked=v;else el.value=v}});marcarSujo()}
+  const fp=$('#f-proc');if(fp)fp.dataset.ini=JSON.stringify(lerSujo());
 }
 function custaForm(pid,c){
   c=c||{};
   $('#custa-form').innerHTML=`<form class="inline-form" id="f-custa" data-pid="${pid}" data-cid="${c.id||''}"><div class="frm">
     <div class="fld"><label for="c-tipo">Tipo</label><select id="c-tipo">${opts(LISTAS.tipos_custa,c.tipo||'Inicial')}</select></div>
     <div class="fld"><label for="c-venc">Vencimento</label><input id="c-venc" type="date" value="${c.vencimento||''}" required></div>
-    <div class="fld"><label for="c-valor">Valor (R$)</label><input id="c-valor" inputmode="decimal" value="${numIn(c.valor)}"></div>
+    <div class="fld"><label for="c-valor">Valor (R$)</label><input id="c-valor" class="money" placeholder="0,00" inputmode="decimal" value="${numIn(c.valor)}"></div>
     <div class="fld"><label for="c-desc">Descrição</label><input id="c-desc" value="${esc(c.descricao||'')}" placeholder="Ex.: custas de cartório"></div>
     ${c.id?'':`<div class="fld full"><label for="c-arq">Boleto (opcional)</label><input id="c-arq" type="file" multiple accept=".pdf,image/*"></div>`}
   </div><div class="acts">${c.id&&canJ?`<button type="button" class="btn danger" data-del-custa="${c.id}">${icon('trash-2')}Excluir</button>`:''}<button type="button" class="btn" data-fechar-form="custa-form">Cancelar</button><button class="btn primary">${icon('check')}${c.id?'Salvar':'Lançar custa'}</button></div></form>`;
@@ -701,7 +743,10 @@ document.addEventListener('click',async e=>{
   if(d.perfilMenu){S.perfilMenu=!S.perfilMenu;redesenharPerfil();return}
   if(d.fotoDel){S.perfilMenu=false;await salvar(()=>api('/api/perfil/foto',{method:'DELETE'}),'Foto removida.');ME.foto='';redesenharPerfil();return}
   if(d.close){closeLayer();return}
-  if(d.page){e.preventDefault();if(d.cfgo){S.cf=d.cfgo;S.cv='lista'}S.page=d.page;S.st='todos';S.q='';closeLayer();render();window.scrollTo(0,0);return}
+  if(d.ptab){PTAB=d.ptab;document.querySelectorAll('.pr-tabs [data-ptab]').forEach(x=>{x.classList.toggle('on',x===t);x.setAttribute('aria-selected',x===t)});document.querySelectorAll('.pane').forEach(x=>x.classList.toggle('on',x.dataset.pane===PTAB));return}
+  if(d.sujoDesc){SUJO=null;$('#dirty-bar').innerHTML='';openProc(ABERTO);return}
+  if(d.sujoSalvar){$('#f-proc').requestSubmit();return}
+  if(d.page){e.preventDefault();if(SUJO&&$('#f-proc')&&avisarSujo())return;if(d.cfgo){S.cf=d.cfgo;S.cv='lista'}S.page=d.page;S.st='todos';S.q='';closeLayer();render();window.scrollTo(0,0);return}
   if(d.refresh){refresh();return}
   if(d.bell){S.bell=!S.bell;renderBell();drawIcons();return}
   if(d.readall){avisos().forEach(n=>READ.add(n.k));saveRead();renderBell();drawIcons();return}
@@ -745,7 +790,7 @@ document.addEventListener('click',async e=>{
   if(d.anexar){anexoForm(+d.anexar);return}
   if(d.novoPag){const n=(window._P.pagamentos||[]).length;$('#pag-form').innerHTML=`<form class="aud-fin" id="f-pag" data-pid="${d.novoPag}"><div class="frm">
       <div class="fld"><label for="pg-data">Data do pagamento</label><input type="date" id="pg-data" value="${HOJE}" required></div>
-      <div class="fld"><label for="pg-valor">Valor (R$)</label><input id="pg-valor" inputmode="decimal" required placeholder="0,00"></div>
+      <div class="fld"><label for="pg-valor">Valor (R$)</label><input id="pg-valor" class="money" inputmode="decimal" required placeholder="0,00"></div>
       <div class="fld"><label for="pg-desc">Descrição</label><input id="pg-desc" maxlength="120" value="${n?'Parcela '+n:'Entrada'}" placeholder="Entrada, Parcela 1/5..."></div>
       <div class="fld"><label for="pg-comp">Comprovante <span class="muted">opcional</span></label><input type="file" id="pg-comp" accept=".pdf,image/*"></div></div>
       <div class="acts"><button type="button" class="btn sm" data-pg-cancel="1">Cancelar</button><button class="btn sm primary">${icon('check')}Lançar pagamento</button></div></form>`;drawIcons();$('#pg-valor').focus();return}
@@ -763,7 +808,7 @@ document.addEventListener('click',async e=>{
     if(!confirma(t,`Mover para ${nome}?`))return;
     const r=await salvar(()=>api(`/api/processos/${d.pid}/mover`,{method:'POST',body:{para}}));
     toast(r&&r.pendente?`Movido para ${nome}. Aguardando autorização.`:`Movido para ${nome}. Escolha o status novo.`);openProc(+d.pid);return}
-  if(d.excluir){if(!confirma(t,'Excluir o processo?'))return;await salvar(()=>api('/api/processos/'+d.excluir,{method:'DELETE'}),'Processo excluído.');closeLayer();return}
+  if(d.excluir){if(!confirma(t,'Excluir o processo?'))return;await salvar(()=>api('/api/processos/'+d.excluir,{method:'DELETE'}),'Processo excluído.');closeLayer(true);return}
   if(d.novoUser){openUser();return}
   if(d.editUser){openUser(ADM.usuarios.find(u=>u.id===+d.editUser));return}
   if(d.reset){if(!confirma(t,'Confirmar: voltar para a padrão?'))return;try{await api(`/api/usuarios/${d.reset}/redefinir`,{method:'POST'});toast('Pronto. No próximo acesso a pessoa entra com a senha padrão e cria outra.');ADM.usuarios=null;closeLayer();carregaAdmin()}catch(er){toast(er.message)}return}
@@ -776,6 +821,7 @@ document.addEventListener('change',e=>{
   if(e.target.dataset&&e.target.dataset.fotoArq){const f=e.target.files[0];if(!f)return;if(f.size>8*1024*1024){toast('Imagem muito grande (máximo 8 MB).');return}
     const fd=new FormData();fd.append('foto',f);S.perfilMenu=false;
     salvar(()=>api('/api/perfil/foto',{method:'POST',body:fd}),'Foto atualizada.').then(r=>{if(r&&r.foto){ME.foto=r.foto;redesenharPerfil()}}).catch(()=>{});return}
+  if(e.target.closest&&e.target.closest('#f-proc'))setTimeout(conferirSujo);
   if(e.target.closest&&e.target.closest('#rat-box')){ratSoma();return}
   if(e.target.dataset.pagArq){const fd=new FormData();[...e.target.files].forEach(x=>fd.append('arquivo',x));fd.append('categoria','Comprovante');fd.append('pagamento_id',e.target.dataset.pagArq);
     salvar(()=>api(`/api/processos/${ABERTO}/anexos`,{method:'POST',body:fd}),'Comprovante anexado.').then(()=>openProc(ABERTO)).catch(()=>{});return}
@@ -788,10 +834,17 @@ document.addEventListener('change',e=>{
   if(e.target.dataset.ord){S.ord=e.target.value;render();return}
 });
 let qT;
-document.addEventListener('input',e=>{if(e.target.classList&&e.target.classList.contains('rat-v')){ratSoma();return}if(e.target.id==='q'){S.q=e.target.value;clearTimeout(qT);qT=setTimeout(()=>{const pos=e.target.selectionStart;render();const q=$('#q');if(q){q.focus();q.setSelectionRange(pos,pos)}},180)}});
+document.addEventListener('input',e=>{
+  if(e.target.dataset&&e.target.dataset.doc){const el=e.target,f=docFmt(el.value);if(f!==el.value){el.value=f;el.setSelectionRange(f.length,f.length)}}
+  if(e.target.closest&&e.target.closest('#f-proc'))setTimeout(conferirSujo);if(e.target.classList&&e.target.classList.contains('rat-v')){ratSoma();return}if(e.target.id==='q'){S.q=e.target.value;clearTimeout(qT);qT=setTimeout(()=>{const pos=e.target.selectionStart;render();const q=$('#q');if(q){q.focus();q.setSelectionRange(pos,pos)}},180)}});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&$('#layer').innerHTML)closeLayer()});
+function conferirSujo(){const f=$('#f-proc');if(!f||!ABERTO)return;const v=lerSujo();if(JSON.stringify(v)===f.dataset.ini){SUJO=null;$('#dirty-bar').innerHTML='';return}SUJO={id:ABERTO,v};marcarSujo()}
+// valores: ao sair do campo, formata 34477.01 -> 34.477,01
+document.addEventListener('focusout',e=>{const el=e.target;if(el.classList&&el.classList.contains('money')&&!el.readOnly&&el.value.trim()){const n=Number(num(el.value));if(!isNaN(n))el.value=numIn(n);if(el.closest('#f-proc'))setTimeout(conferirSujo)}});
+// fechar a aba do navegador com alteração não salva
+window.addEventListener('beforeunload',e=>{if(SUJO&&$('#f-proc')){e.preventDefault();e.returnValue=''}});
 
-const num=v=>{v=String(v||'').trim();if(!v)return '';if(/,/.test(v))v=v.replace(/\./g,'').replace(',','.');return v};
+const num=v=>{v=String(v||'').replace(/R\$|\s/g,'').trim();if(!v)return '';if(/,/.test(v))v=v.replace(/\./g,'').replace(',','.');else if(/^\d{1,3}(\.\d{3})+$/.test(v))v=v.replace(/\./g,'');return v};
 document.addEventListener('submit',async e=>{
   e.preventDefault();const f=e.target,btn=f.querySelector('button.primary');if(btn)btn.disabled=true;
   try{
@@ -799,7 +852,7 @@ document.addEventListener('submit',async e=>{
     if(f.id==='f-proc'){const p=window._P,d={};
       if(canJ){Object.assign(d,lerForm());d.valor=num($('#p-valor').value);d.valor_acordo=num($('#p-valor_acordo').value)}
       if(canF){d.conferido=$('#p-conferido').checked}
-      const r=await salvar(()=>api('/api/processos/'+p.id,{method:'POST',body:d}));toast(r.mudancas?'Alterações salvas.':'Nada mudou.');openProc(p.id)}
+      const r=await salvar(()=>api('/api/processos/'+p.id,{method:'POST',body:d}));SUJO=null;toast(r.mudancas?'Alterações salvas.':'Nada mudou.');openProc(p.id)}
     if(f.id==='f-and'){const tx=$('#and-t').value.trim();if(!tx){toast('Escreva o andamento.');return}await salvar(()=>api(`/api/processos/${f.dataset.id}/andamentos`,{method:'POST',body:{texto:tx}}),'Andamento adicionado.');openProc(+f.dataset.id)}
     if(f.id==='f-custa'){const body={tipo:$('#c-tipo').value,vencimento:$('#c-venc').value,valor:num($('#c-valor').value),descricao:$('#c-desc').value};
       if(f.dataset.cid){await salvar(()=>api('/api/custas/'+f.dataset.cid,{method:'POST',body}),'Custa alterada.')}

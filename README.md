@@ -92,6 +92,15 @@ o histórico só dele. Para isso funcionar, **cada pessoa precisa ter o próprio
   (as listas de status das abas são diferentes) e um andamento registra a mudança com o status, tipo de ação e teor antigos.
 - Indo para Cobrança, quem não autoriza deixa o processo aguardando a autorização, como num cadastro novo.
 
+## Janela do processo
+
+- Resumo fixo no topo (status, loja, código, CNPJ, dívida/acordo/pago, próxima custa e próxima audiência) e abas:
+  Dados, Andamentos, Linha do tempo, Custas e audiências, Pagamentos, Anexos e Histórico. A aba escolhida fica lembrada
+  enquanto a janela está aberta; no modo visualização abre na Linha do tempo.
+- Valores formatam ao sair do campo (34.477,01) e CNPJ/CPF enquanto digita. Só formatação não conta como alteração.
+- Alteração não salva: ao tentar fechar (ou trocar de página/fechar o navegador) aparece o aviso com Descartar / Salvar.
+  O que estava sendo editado continua lá se lançarem um andamento ou uma custa no meio.
+
 ## Perfil e foto
 
 - O perfil fica no rodapé da barra lateral (no celular, continua no topo). Clicando nele: colocar/trocar/remover foto,
