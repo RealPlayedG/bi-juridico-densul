@@ -118,8 +118,9 @@ function renderShell(){
     +(isAdmin?`<button class="nav-extra ${S.page==='admin'?'active':''}" data-page="admin">${icon('shield')}Administração</button>`:'');
   const minhas=ME.lojas&&ME.lojas.length?LOJAS.filter(l=>ME.lojas.includes(l.nome)):LOJAS;
   $('#lojaSel').innerHTML=filtroHTML();
+  $('#sideMe').innerHTML=perfilHTML();
   if(isLeitura){$('#profile').innerHTML=`<span class="me"><span class="av dono">${icon('eye')}</span><span class="me-t"><b>Modo apresentação</b><small>Só visualização</small></span></span><a class="btn sm primary btn-entrar" href="/login" title="Entrar com usuário e senha">${icon('log-in')}Entrar</a>`}
-  else $('#profile').innerHTML=`<span class="me"><span class="av ${ME.perfil==='financeiro'?'sec':ME.perfil==='admin'?'eq':'dono'}">${esc((ME.nome||'?')[0])}</span><span class="me-t"><b>${esc(ME.nome)}</b><small>${esc(ME.perfil_nome)}</small></span></span><a class="iconbtn sm" href="/senha" title="Trocar senha" aria-label="Trocar senha">${icon('key-round')}</a><a class="iconbtn sm" href="/sair" title="Sair" aria-label="Sair">${icon('log-out')}</a>`;
+  else $('#profile').innerHTML=`<span class="me">${avatar()}<span class="me-t"><b>${esc(ME.nome)}</b><small>${esc(ME.perfil_nome)}</small></span></span><a class="iconbtn sm" href="/senha" title="Trocar senha" aria-label="Trocar senha">${icon('key-round')}</a><a class="iconbtn sm" href="/sair" title="Sair" aria-label="Sair">${icon('log-out')}</a>`;
   $('#sync').innerHTML=SYNC.err?`<span class="sync err" title="${esc(SYNC.err)}">${icon('cloud-off')}<span>Sem conexão</span></span>`:`<button class="sync" data-refresh="1" title="Atualizar agora">${icon(SYNC.busy?'loader':'cloud')}<span>${SYNC.at?'Atualizado às '+pad(SYNC.at.getHours())+':'+pad(SYNC.at.getMinutes()):'Conectando'}</span></button>`;
   $('#themeBtn').innerHTML=icon(isDark()?'sun':'moon');
   renderBell();
@@ -448,6 +449,20 @@ function openNovo(tipo){
 
 /* ---------- Detalhe do processo ---------- */
 let ABERTO=null;
+/* ---------- Perfil (rodapé da barra lateral) e foto ---------- */
+function avatar(cls=''){const c=ME.perfil==='financeiro'?'sec':ME.perfil==='admin'?'eq':'dono';
+  return ME.foto?`<span class="av foto ${cls}"><img src="${esc(ME.foto)}" alt=""></span>`:`<span class="av ${c} ${cls}">${esc(iniciais(ME.nome))}</span>`}
+function iniciais(n){const p=String(n||'?').replace(/[-–].*$/,'').trim().split(/\s+/);return ((p[0]||'?')[0]+(p.length>1?p[p.length-1][0]:'')).toUpperCase()}
+function perfilHTML(){
+  if(isLeitura)return `<div class="sm-card"><span class="av dono">${icon('eye')}</span><span class="sm-t"><b>Modo apresentação</b><small>Só visualização</small></span></div><a class="btn sm primary sm-entrar" href="/login">${icon('log-in')}Entrar</a>`;
+  return `<button type="button" class="sm-card" data-perfil-menu="1" aria-haspopup="menu" aria-expanded="${!!S.perfilMenu}">${avatar('sm-av')}<span class="sm-t"><b>${esc(ME.nome)}</b><small>${esc(ME.perfil_nome)}</small></span>${icon('chevrons-up-down')}</button>
+    ${S.perfilMenu?`<div class="sm-menu" role="menu">
+      <label class="sm-i" role="menuitem">${icon('camera')}${ME.foto?'Trocar foto':'Colocar foto'}<input type="file" accept="image/*" hidden data-foto-arq="1"></label>
+      ${ME.foto?`<button type="button" class="sm-i" role="menuitem" data-foto-del="1">${icon('image-off')}Remover foto</button>`:''}
+      <a class="sm-i" role="menuitem" href="/senha">${icon('key-round')}Trocar senha</a>
+      <a class="sm-i sair" role="menuitem" href="/sair">${icon('log-out')}Sair</a></div>`:''}`;
+}
+function redesenharPerfil(){$('#sideMe').innerHTML=perfilHTML();const pm=$('#profile .me .av');if(pm)pm.outerHTML=avatar();drawIcons()}
 async function openProc(id){
   ABERTO=id;
   openLayer(`${mh('Carregando...')}<div class="m-b"><div class="loading" style="min-height:200px"><span class="spin"></span></div></div>`,true);
@@ -676,12 +691,15 @@ document.addEventListener('click',async e=>{
   const t=e.target.closest('button,a,tr,.t,.day,[data-open]');
   if(S.bell&&!e.target.closest('#bell')){S.bell=false;renderBell();drawIcons()}
   if(S.flOpen&&!e.target.closest('#lojaSel')){S.flOpen=false;renderShell();drawIcons()}
+  if(S.perfilMenu&&!e.target.closest('#sideMe')){S.perfilMenu=false;redesenharPerfil()}
   {const f=e.target.closest('[data-flbtn],[data-flok],[data-flclear]');if(f){const d=f.dataset;
     if(d.flbtn){S.flOpen=!S.flOpen;renderShell();drawIcons();return}
     if(d.flok){S.flOpen=false;renderShell();drawIcons();return}
     if(d.flclear){S.fl={lojas:[],regs:[]};salvaEstado();render();return}}}
   if(e.target.matches('.overlay')){closeLayer();return}
   if(!t)return;const d=t.dataset;
+  if(d.perfilMenu){S.perfilMenu=!S.perfilMenu;redesenharPerfil();return}
+  if(d.fotoDel){S.perfilMenu=false;await salvar(()=>api('/api/perfil/foto',{method:'DELETE'}),'Foto removida.');ME.foto='';redesenharPerfil();return}
   if(d.close){closeLayer();return}
   if(d.page){e.preventDefault();if(d.cfgo){S.cf=d.cfgo;S.cv='lista'}S.page=d.page;S.st='todos';S.q='';closeLayer();render();window.scrollTo(0,0);return}
   if(d.refresh){refresh();return}
@@ -755,6 +773,9 @@ document.addEventListener('click',async e=>{
   if(t.id==='themeBtn'){const n=isDark()?'light':'dark';document.documentElement.dataset.theme=n;try{localStorage.setItem('bj-theme',n)}catch(er){}render();return}
 });
 document.addEventListener('change',e=>{
+  if(e.target.dataset&&e.target.dataset.fotoArq){const f=e.target.files[0];if(!f)return;if(f.size>8*1024*1024){toast('Imagem muito grande (máximo 8 MB).');return}
+    const fd=new FormData();fd.append('foto',f);S.perfilMenu=false;
+    salvar(()=>api('/api/perfil/foto',{method:'POST',body:fd}),'Foto atualizada.').then(r=>{if(r&&r.foto){ME.foto=r.foto;redesenharPerfil()}}).catch(()=>{});return}
   if(e.target.closest&&e.target.closest('#rat-box')){ratSoma();return}
   if(e.target.dataset.pagArq){const fd=new FormData();[...e.target.files].forEach(x=>fd.append('arquivo',x));fd.append('categoria','Comprovante');fd.append('pagamento_id',e.target.dataset.pagArq);
     salvar(()=>api(`/api/processos/${ABERTO}/anexos`,{method:'POST',body:fd}),'Comprovante anexado.').then(()=>openProc(ABERTO)).catch(()=>{});return}
