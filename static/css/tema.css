@@ -503,3 +503,25 @@ a.lk svg{width:13px;height:13px;flex:none}
   .pr-res .fin b{font-size:13.5px}
   .pr-res .fin small{font-size:10.5px}
 }
+
+/* Perfil no rodapé da barra lateral */
+.side-me{margin-top:auto;position:relative;display:flex;flex-direction:column;gap:8px;padding-top:12px;border-top:1px solid color-mix(in srgb,var(--sb-ink) 14%,transparent)}
+.sm-card{display:flex;align-items:center;gap:10px;width:100%;padding:8px;border:0;border-radius:12px;background:none;color:var(--sb-ink);font:inherit;text-align:left;cursor:pointer}
+button.sm-card:hover,button.sm-card[aria-expanded="true"]{background:color-mix(in srgb,var(--sb-ink) 10%,transparent)}
+.sm-card>svg{width:16px;height:16px;margin-left:auto;opacity:.6;flex:none}
+.sm-t{display:flex;flex-direction:column;min-width:0;line-height:1.2}
+.sm-t b{font-size:13px;font-weight:600;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sm-t small{font-size:11.5px;opacity:.7}
+.sm-card .av{width:36px;height:36px;border-radius:50%;font-size:13px}
+.av.foto{padding:0;overflow:hidden;border-radius:50%;background:var(--surface-2)}
+.av.foto img{width:100%;height:100%;object-fit:cover;display:block}
+.me .av{border-radius:50%}
+.sm-menu{position:absolute;left:0;right:0;bottom:calc(100% + 6px);background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-lg);padding:6px;display:flex;flex-direction:column;z-index:30}
+.sm-i{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;border:0;background:none;font:inherit;font-size:13px;color:var(--ink);text-decoration:none;cursor:pointer;text-align:left}
+.sm-i:hover{background:var(--surface-2)}
+.sm-i svg{width:16px;height:16px;color:var(--muted)}
+.sm-i.sair,.sm-i.sair svg{color:var(--neg)}
+.sm-entrar{justify-content:center}
+/* no computador o perfil fica só na barra lateral; no celular continua no topo */
+@media (min-width:901px){#profile{display:none}}
+@media (max-width:900px){.side-me{display:none}}

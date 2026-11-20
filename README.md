@@ -92,6 +92,11 @@ o histórico só dele. Para isso funcionar, **cada pessoa precisa ter o próprio
   (as listas de status das abas são diferentes) e um andamento registra a mudança com o status, tipo de ação e teor antigos.
 - Indo para Cobrança, quem não autoriza deixa o processo aguardando a autorização, como num cadastro novo.
 
+## Perfil e foto
+
+- O perfil fica no rodapé da barra lateral (no celular, continua no topo). Clicando nele: colocar/trocar/remover foto,
+  trocar senha e sair. A foto é cortada em quadrado e reduzida para 256 px; fica em PASTA_DADOS/fotos.
+
 ## Dívida em mais de uma loja
 
 - Na cobrança, abaixo de Loja: **Dívida em mais de uma loja**. Cada loja recebe o seu valor; a primeira é a loja principal

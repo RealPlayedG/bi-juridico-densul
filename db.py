@@ -58,6 +58,7 @@ usuarios = Table(
     Column("criado_em", DateTime, default=agora),
     Column("autoriza", Boolean, default=False),             # pode autorizar cobranças novas lançadas pelo jurídico
     Column("trocar_senha", Boolean, default=False),         # senha provisória: obriga a criar uma própria no próximo acesso
+    Column("foto", String(80), default=""),                 # foto do perfil (arquivo em PASTA_DADOS/fotos)
 )
 
 lojas = Table(
@@ -268,6 +269,7 @@ COLUNAS_NOVAS = [  # (tabela, coluna, tipo SQL): criadas sozinhas na subida, em 
     ("anexos", "pagamento_id", "INTEGER"),
     ("lojas", "codigo", "VARCHAR(20) DEFAULT ''"),
     ("processos", "rateio", "TEXT DEFAULT ''"),
+    ("usuarios", "foto", "VARCHAR(80) DEFAULT ''"),
     ("audiencias", "finalizada", "BOOLEAN DEFAULT FALSE"),
     ("audiencias", "finalizada_em", "TIMESTAMP"),
     ("audiencias", "finalizada_por", "VARCHAR(120) DEFAULT ''"),

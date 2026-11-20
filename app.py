@@ -433,7 +433,8 @@ def saude():
 @logado
 def index():
     u = eu()
-    return render_template("index.html", me={"id": u["id"], "nome": u["nome"], "usuario": u["usuario"], "perfil": u["perfil"],
+    foto = _foto_atual(u)
+    return render_template("index.html", me={"id": u["id"], "nome": u["nome"], "usuario": u["usuario"], "perfil": u["perfil"], "foto": foto,
                                               "perfil_nome": PERFIS.get(u["perfil"], "Apresentação"), "lojas": lojas_de(u),
                                               "autoriza": pode("autorizar")},
                            versao=os.environ.get("RAILWAY_GIT_COMMIT_SHA", "dev")[:7])
@@ -1476,6 +1477,73 @@ def api_importar_aplicar():
     if nome.endswith("_google.xlsx"):
         espelho.ESTADO["historico_id"] = None  # escreve na próxima volta
     return jsonify(ok=True, **n, conflitos=len(pl["conflitos"]))
+
+
+# ---------- foto do perfil ----------
+
+PASTA_FOTOS = os.path.join(PASTA_DADOS, "fotos")
+os.makedirs(PASTA_FOTOS, exist_ok=True)
+
+
+def _foto_atual(u):
+    if u.get("perfil") == "leitura" or not u.get("id"):
+        return ""
+    with engine.connect() as c:
+        f = c.execute(select(usuarios.c.foto).where(usuarios.c.id == u["id"])).scalar()
+    return f"/fotos/{f}" if f else ""
+
+
+@app.post("/api/perfil/foto")
+@logado
+def api_foto_perfil():
+    """A própria pessoa troca a foto. A imagem é cortada em quadrado e reduzida (256 px) antes de guardar."""
+    if eu()["perfil"] == "leitura":
+        abort(403)
+    arq = request.files.get("foto")
+    if not arq or not arq.filename:
+        return jsonify(erro="Escolha uma imagem."), 400
+    from PIL import Image, ImageOps, UnidentifiedImageError
+    try:
+        img = Image.open(arq.stream)
+        img = ImageOps.exif_transpose(img).convert("RGB")
+    except (UnidentifiedImageError, OSError):
+        return jsonify(erro="Esse arquivo não é uma imagem (use JPG ou PNG)."), 400
+    img = ImageOps.fit(img, (256, 256), Image.LANCZOS)
+    nome = f"{eu()['id']}_{int(time.time())}.jpg"
+    img.save(os.path.join(PASTA_FOTOS, nome), "JPEG", quality=86)
+    with engine.begin() as c:
+        antiga = c.execute(select(usuarios.c.foto).where(usuarios.c.id == eu()["id"])).scalar()
+        c.execute(update(usuarios).where(usuarios.c.id == eu()["id"]).values(foto=nome))
+        registrar(c, eu(), "Foto do perfil alterada")
+    if antiga and antiga != nome:
+        try:
+            os.remove(os.path.join(PASTA_FOTOS, antiga))
+        except OSError:
+            pass
+    return jsonify(foto=f"/fotos/{nome}")
+
+
+@app.delete("/api/perfil/foto")
+@logado
+def api_remover_foto():
+    if eu()["perfil"] == "leitura":
+        abort(403)
+    with engine.begin() as c:
+        antiga = c.execute(select(usuarios.c.foto).where(usuarios.c.id == eu()["id"])).scalar()
+        c.execute(update(usuarios).where(usuarios.c.id == eu()["id"]).values(foto=""))
+        registrar(c, eu(), "Foto do perfil removida")
+    if antiga:
+        try:
+            os.remove(os.path.join(PASTA_FOTOS, antiga))
+        except OSError:
+            pass
+    return jsonify(ok=True)
+
+
+@app.get("/fotos/<nome>")
+@logado
+def foto_perfil(nome):
+    return send_from_directory(PASTA_FOTOS, secure_filename(nome), max_age=86400)
 
 
 # ---------- backups (administrador) ----------
